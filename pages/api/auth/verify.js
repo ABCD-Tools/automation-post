@@ -1,4 +1,7 @@
+// Supabase handles email verification via magic link. This endpoint can be
+// extended later if you want a custom verification flow. For now it just
+// confirms the request is reachable.
+
 export default async function handler(req, res) {
-  // TODO: Implement verify handler
-  res.status(200).json({ message: 'verify endpoint' });
+  return res.status(200).json({ message: 'Verification handled by Supabase' });
 }

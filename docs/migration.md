@@ -21,9 +21,29 @@ For a Supabase project, copy the connection string from the dashboard (e.g. “C
 
 ---
 
-### 2. Running Supabase CLI via `npx`
+### 2. Running the built-in helpers (`psql` required)
 
-You don’t need to install the CLI globally. From the project root:
+The project ships with convenience scripts that call `psql` under the hood.  
+Make sure the PostgreSQL CLI (`psql`) is installed and available on your PATH.
+
+```bash
+# Apply all migrations
+pnpm migrate
+
+# Drop and recreate schema, then apply migrations
+pnpm migrate:fresh
+
+# Run SQL seeders (e.g. create admin user)
+pnpm seed
+```
+
+These scripts read `DATABASE_URL` from `.env` and pass it directly to `psql`.
+
+---
+
+### 3. Running Supabase CLI via `npx`
+
+If you prefer to use the Supabase CLI directly, you don’t need to install it globally. From the project root:
 
 ```bash
 npx supabase init
@@ -37,7 +57,7 @@ npx supabase --help
 
 ---
 
-### 3. Initialize migrations (if needed)
+### 4. Initialize migrations (if needed)
 
 If you ever need to (re)initialize the migrations folder:
 
@@ -50,7 +70,7 @@ In this repo, `supabase/migrations/` already exists with SQL files, so you can u
 
 ---
 
-### 4. Creating a new migration
+### 5. Creating a new migration
 
 To create a new empty SQL migration:
 
@@ -68,7 +88,7 @@ Edit that file and add your SQL `CREATE TABLE`, `ALTER TABLE`, etc.
 
 ---
 
-### 5. Applying migrations to the database
+### 6. Applying migrations to the database
 
 Use `db push` to apply all pending migrations to the database pointed to by `DATABASE_URL`:
 

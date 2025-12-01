@@ -7,7 +7,9 @@
     "start": "next start",
     "build:client": "node src/modules-installer/builder.js",
     "migrate": "node scripts/migration.js",
-    "migrate:fresh": "node scripts/migration.js --fresh"
+    "migrate:fresh": "node scripts/migration.js --fresh",
+    "seed": "node scripts/seeder.js",
+    "bypass-powershell": "Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.38.0",
@@ -28,6 +30,7 @@
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-hook-form": "^7.48.0",
+    "swagger-ui-react": "^5.17.14",
     "uuid": "^9.0.0"
   },
   "devDependencies": {
@@ -40,6 +43,16 @@
   "pnpm": {
     "overrides": {
       "glob": ">=10.5.0"
-    }
+    },
+    "onlyBuiltDependencies": [
+      "@scarf/scarf",
+      "@tree-sitter-grammars/tree-sitter-yaml",
+      "bcrypt",
+      "core-js",
+      "core-js-pure",
+      "tree-sitter",
+      "tree-sitter-json",
+      "unrs-resolver"
+    ]
   }
 }
