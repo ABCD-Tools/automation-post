@@ -2,3 +2,13 @@
 @tailwind components;
 @tailwind utilities;
 
+@font-face {
+  font-family: "Jakarta-Sans";
+  src: url("/fonts/Jakarta-sans.ttf") format("truetype");
+}
+body {
+  font-family: "Jakarta-Sans", sans-serif;
+}
+::-webkit-scrollbar {
+  width: 0;
+}
