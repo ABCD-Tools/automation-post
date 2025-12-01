@@ -1,31 +1,21 @@
 import { useState } from 'react';
+import { toast } from 'react-toastify';
+import { registerWithEmailPassword } from '../src/modules-view/utils/api';
 
 export default function Register() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState('');
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
-    setMessage('');
 
     try {
-      const res = await fetch('/api/auth/register', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
-      });
-
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || 'Registration failed');
-      }
-
-      setMessage('Registration successful. Please check your email to verify your account.');
+      await registerWithEmailPassword({ email, password });
+      toast.success('Registration successful. Please check your email to verify your account.');
     } catch (err) {
-      setMessage(err.message);
+      toast.error(err.message || 'Registration failed');
     } finally {
       setLoading(false);
     }
@@ -58,7 +48,6 @@ export default function Register() {
           {loading ? 'Registering...' : 'Register'}
         </button>
       </form>
-      {message && <p style={{ marginTop: '1rem' }}>{message}</p>}
     </main>
   );
 }
