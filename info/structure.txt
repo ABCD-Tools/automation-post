@@ -2,7 +2,7 @@
 PROJECT STRUCTURE
 =============================================================================
 
-post-automation-platform/
+abcd-tools/
 ├── src/
 │   ├── modules-view/              # Frontend (Next.js pages & components)
 │   │   ├── pages/
