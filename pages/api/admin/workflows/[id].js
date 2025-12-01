@@ -1,4 +1,6 @@
 export default async function handler(req, res) {
-  // TODO: Implement [id] handler
-  res.status(200).json({ message: '[id] endpoint' });
+  const { id } = req.query;
+  
+  // TODO: Implement workflow handler
+  res.status(200).json({ message: `Workflow ${id}` });
 }

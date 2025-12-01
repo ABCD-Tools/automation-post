@@ -3,8 +3,7 @@ const path = require('path');
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
-  // Vercel deployment configuration
-  output: 'standalone',
+  // Note: output: 'standalone' removed - not needed for Vercel and causes Windows symlink issues
   webpack: (config) => {
     config.resolve.alias = {
       ...config.resolve.alias,
