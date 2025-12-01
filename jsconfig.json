@@ -1,0 +1,14 @@
+{
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@components/*": ["src/modules-view/components/*"],
+      "@utils/*": ["src/modules-view/utils/*"],
+      "@modules-logic/*": ["src/modules-logic/*"],
+      "@modules-agents/*": ["src/modules-agents/*"],
+      "@modules-view/*": ["src/modules-view/*"]
+    }
+  },
+  "exclude": ["node_modules", ".next"]
+}
+

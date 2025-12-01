@@ -1,2 +1,0 @@
-// Job status detail page
-

@@ -1,2 +1,0 @@
-// API route - Client heartbeat
-
