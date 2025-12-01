@@ -1,0 +1,313 @@
+=============================================================================
+TECHNOLOGY STACK
+=============================================================================
+
+FRONTEND
+--------
+Framework: Next.js 14 (App Router)
+Language: JavaScript (ES6+)
+Styling: Tailwind CSS
+State Management: React Context API / Local State
+File Uploads: next-cloudinary component
+Forms: react-hook-form
+
+Why Next.js:
+- Built-in API routes (no separate backend server)
+- Server-side rendering for better SEO
+- File-based routing
+- Easy deployment to Vercel
+- Great developer experience
+
+=============================================================================
+
+BACKEND
+-------
+Framework: Next.js API Routes
+Language: JavaScript (Node.js runtime)
+API Architecture: RESTful API
+
+Why Next.js API Routes:
+- No need for separate Express server
+- Serverless functions (auto-scaling)
+- Easy to deploy
+- Share code with frontend
+- Built-in TypeScript support (if needed later)
+
+=============================================================================
+
+DATABASE
+--------
+Provider: Supabase (PostgreSQL)
+ORM: Direct SQL queries via @supabase/supabase-js
+
+Features Used:
+- PostgreSQL database
+- Built-in authentication (email/password)
+- Row Level Security (RLS) for data isolation
+- Real-time subscriptions (optional for live updates)
+- Built-in email sending (verification emails)
+- Free tier: 500 MB database, 2 GB bandwidth/month
+
+Why Supabase:
+- Free tier is generous
+- Built-in auth system
+- Sends emails automatically (no SendGrid/Mailgun needed)
+- PostgreSQL = relational DB (good for complex queries)
+- Real-time capabilities (websockets)
+- Easy to use JavaScript client
+- Auto-generated REST API (optional)
+
+=============================================================================
+
+FILE STORAGE
+------------
+Provider: Cloudinary
+Purpose: Image uploads (post images)
+
+Features Used:
+- Image uploads via API
+- Auto-optimization (compression, format conversion)
+- CDN delivery
+- Free tier: 25 GB storage, 25 GB bandwidth/month
+
+Why Cloudinary:
+- Free tier is enough for MVP
+- Fast CDN delivery
+- Auto image optimization
+- Easy Next.js integration
+- Secure URLs
+- No file size limits
+
+=============================================================================
+
+AUTHENTICATION
+--------------
+Provider: Supabase Auth
+Method: Email + Password
+Tokens: JWT (JSON Web Tokens)
+
+Flow:
+- Supabase handles user registration
+- Supabase sends verification email
+- Next.js API validates JWT tokens
+- Client agent uses long-lived JWT (90 days)
+
+Why Supabase Auth:
+- Free email sending
+- Built-in email verification
+- JWT tokens
+- No need for Passport.js or Auth0
+- Row Level Security integration
+
+=============================================================================
+
+ENCRYPTION
+----------
+Client-side: Web Crypto API (browser)
+Server-side: crypto-js (Node.js)
+Algorithm: AES-256-CBC
+
+What's Encrypted:
+- Social media passwords (before storing in DB)
+- Session cookies (stored in DB)
+- API tokens
+
+Why crypto-js:
+- Simple API
+- Well-maintained
+- Works in both browser and Node.js
+- AES-256 is industry standard
+
+=============================================================================
+
+CLIENT AGENT
+------------
+Runtime: Node.js 18+
+Browser Automation: Puppeteer-core
+Process Management: Native Node.js child_process
+Protocol Handler: Windows Registry (yourapp://)
+
+Why Puppeteer-core:
+- Lightweight (doesn't bundle Chromium)
+- Uses system Chrome/Edge
+- Full browser automation
+- Stealth plugins available
+- Active maintenance
+
+Why Not Playwright:
+- Larger bundle size
+- More complex for simple use case
+
+Why Not Selenium:
+- Requires separate WebDriver
+- More setup complexity
+
+=============================================================================
+
+INSTALLER
+---------
+Format: Windows Batch Script (.bat) + Registry file (.reg)
+Packager: archiver (Node.js package)
+Distribution: ZIP archive with auto-extract
+
+Installer Components:
+1. install.bat (runs installation)
+2. register-protocol.reg (registers yourapp://)
+3. agent/ folder (agent.exe + dependencies)
+4. config.json (embedded user config)
+
+Why Batch Script:
+- No compilation needed
+- Works on all Windows versions
+- Can execute registry files
+- Simple to debug
+- Users familiar with .exe installers
+
+Alternative Considered:
+- Electron installer (too heavy, 150+ MB)
+- NSIS installer (requires compilation, complex)
+- MSI installer (requires signing certificate)
+
+=============================================================================
+
+DEPLOYMENT
+----------
+Frontend + Backend: Vercel (Next.js native platform)
+Database: Supabase Cloud
+Storage: Cloudinary CDN
+Client Agent: User's local machine
+
+Why Vercel:
+- Free tier for Next.js apps
+- Auto-deploy from Git
+- Serverless functions (API routes)
+- Global CDN
+- Zero configuration
+- Built by Next.js creators
+
+Free Tier Limits:
+- 100 GB bandwidth/month
+- Unlimited API requests
+- 100 GB-hours serverless execution
+
+=============================================================================
+
+DEVELOPMENT TOOLS
+-----------------
+Version Control: Git + GitHub
+Code Editor: VS Code
+Package Manager: npm or pnpm (pnpm is faster)
+Linting: ESLint (Next.js default config)
+API Testing: Postman 
+
+=============================================================================
+MONITORING & LOGGING (Optional for MVP)
+Error Tracking: Browser / terminal console.error for now
+Logging: Winston (file-based logs for agent)
+Analytics: None for MVP (add Google Analytics later)
+
+=============================================================================
+BROWSER COMPATIBILITY
+Minimum Requirements:
+
+Chrome 90+
+Edge 90+
+Firefox 88+
+Safari 14+
+
+Deep Link Support: All modern browsers
+File Picker API: Chrome 86+, Edge 86+
+
+=============================================================================
+SCALABILITY CONSIDERATIONS
+Current Setup (MVP):
+
+Supports ~100 users on free tiers
+~10 posts per user per day
+Single-region deployment
+
+Future Scaling Options:
+
+Supabase Pro: $25/month (8 GB database, 250 GB bandwidth)
+Cloudinary Pro: $99/month (unlimited storage)
+Vercel Pro: $20/month (1 TB bandwidth)
+If Scaling Beyond 1,000 Users:
+
+Add Redis for job queue (Upstash free tier)
+Move to dedicated PostgreSQL (Railway, Render)
+Use S3 instead of Cloudinary
+Add load balancer
+
+=============================================================================
+SECURITY MEASURES
+
+Password Security:
+
+Use AES (Encryption and Decryption)
+Decryptor store in local.env clients
+Encryption key store in db
+
+
+API Security:
+
+JWT tokens for authentication
+HTTP-only cookies for sessions
+CORS restrictions
+Rate limiting (100 requests/minute per IP)
+
+
+Database Security:
+
+Row Level Security (Supabase RLS)
+Prepared statements (SQL injection prevention)
+Encrypted backups
+
+
+Client Agent Security:
+
+API tokens with expiration
+Local encryption keys never sent to server
+Deep links require user approval
+
+=============================================================================
+
+COST BREAKDOWN (FREE TIER)
+Supabase:    $0/month (500 MB DB, 2 GB bandwidth)
+Cloudinary:  $0/month (25 GB storage, 25 GB bandwidth)
+Vercel:      $0/month (100 GB bandwidth, unlimited functions)
+Domain:      $0/year (Namecheap, user already has)
+Total:       $0/month, $0/year
+
+=============================================================================
+ESTIMATED DEVELOPMENT TIME
+
+Day 1:
+
+Setup Next.js + Supabase
+User auth (register, login, email verify)
+Basic dashboard UI
+
+Day 2:
+
+Account management (add/list social accounts)
+Job creation (post composer)
+Cloudinary integration
+Working UI with Dummy Data
+
+Day 3:
+
+Client agent (polling, executor)
+Deep link registration
+Installer builder
+
+Day 4:
+
+Admin panel (micro-actions, workflows)
+Testing & bug fixes
+Deployment
+
+Day 5 - 7:
+Docs and Bug Fixing
+
+Single platform (Instagram only)
+Achievable: Core functionality working

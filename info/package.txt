@@ -1,0 +1,156 @@
+=============================================================================
+NPM PACKAGES REQUIRED
+=============================================================================
+
+ROOT PACKAGE.JSON (Next.js App)
+--------------------------------
+
+{
+  "name": "post-automation-platform",
+  "version": "1.0.0",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "build:client": "node src/modules-installer/builder.js"
+  },
+  "dependencies": {
+    
+    # NEXT.JS & REACT
+    "next": "^14.0.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    
+    # SUPABASE (Database + Auth + Email)
+    "@supabase/supabase-js": "^2.38.0",
+    
+    # CLOUDINARY (Image uploads)
+    "cloudinary": "^1.41.0",
+    "next-cloudinary": "^5.0.0",
+    
+    # AUTHENTICATION
+    "bcrypt": "^5.1.1",
+    "jsonwebtoken": "^9.0.2",
+    "jose": "^5.0.0",
+    
+    # ENCRYPTION
+    "crypto-js": "^4.2.0",
+    
+    # API & HTTP
+    "axios": "^1.6.0",
+    "node-fetch": "^3.3.0",
+    
+    # FORM HANDLING
+    "react-hook-form": "^7.48.0",
+    
+    # UI COMPONENTS (Optional but recommended)
+    "clsx": "^2.0.0",
+    
+    # FILE HANDLING
+    "adm-zip": "^0.5.10",
+    "archiver": "^6.0.1",
+    
+    # UTILITIES
+    "uuid": "^9.0.0",
+    "date-fns": "^2.30.0"
+  },
+  "devDependencies": {
+    "eslint": "^8.54.0",
+    "eslint-config-next": "^14.0.0"
+  }
+}
+
+=============================================================================
+
+CLIENT AGENT PACKAGE.JSON (modules-client)
+-------------------------------------------
+
+{
+  "name": "post-automation-client",
+  "version": "1.0.0",
+  "main": "agent.js",
+  "scripts": {
+    "start": "node agent.js"
+  },
+  "dependencies": {
+    
+    # BROWSER AUTOMATION
+    "puppeteer-core": "^21.5.0",
+    
+    # HTTP CLIENT
+    "node-fetch": "^3.3.0",
+    "axios": "^1.6.0",
+    
+    # ENVIRONMENT & CONFIG
+    "dotenv": "^16.3.0",
+    
+    # FILE SYSTEM
+    "fs-extra": "^11.1.1",
+    
+    # ENCRYPTION
+    "crypto-js": "^4.2.0",
+    
+    # UTILITIES
+    "uuid": "^9.0.0"
+  },
+  "pkg": {
+    "targets": ["node18-win-x64"],
+    "outputPath": "dist"
+  }
+}
+
+=============================================================================
+
+INSTALLER BUILDER DEPENDENCIES
+-------------------------------
+
+Required for modules-installer/builder.js:
+
+"archiver": "^6.0.1"      # Create ZIP archives
+"adm-zip": "^0.5.10"       # Extract/manipulate ZIPs
+"fs-extra": "^11.1.1"      # File system operations
+"uuid": "^9.0.0"           # Generate unique installer IDs
+
+=============================================================================
+
+OPTIONAL BUT RECOMMENDED
+------------------------
+
+# RATE LIMITING (API protection)
+"express-rate-limit": "^7.1.0"
+
+# LOGGING (Better than console.log)
+"winston": "^3.11.0"
+
+# VALIDATION (Input validation)
+"joi": "^17.11.0"
+
+# TESTING (If time permits)
+"jest": "^29.7.0"
+
+# UI STYLING (If not using Tailwind)
+"styled-components": "^6.1.0"
+
+=============================================================================
+
+BROWSER AUTOMATION NOTES
+-------------------------
+
+For puppeteer-core, client will need Chrome/Edge installed.
+The browser finder utility (modules-agents/utils/browser.js) will locate it.
+
+If Chrome not found, installer can download portable Chromium:
+"@puppeteer/browsers": "^1.9.0"  # For downloading Chromium on-demand
+
+=============================================================================
+
+TOTAL ESTIMATED SIZE
+--------------------
+
+Next.js App (node_modules): ~400 MB
+Client Agent (node_modules): ~50 MB (puppeteer-core without Chromium)
+Client Agent (.exe compiled): ~80 MB
+
+User Download Size: ~80 MB (installer.exe with embedded agent)
+
+=============================================================================

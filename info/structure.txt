@@ -1,0 +1,234 @@
+=============================================================================
+PROJECT STRUCTURE
+=============================================================================
+
+post-automation-platform/
+├── src/
+│   ├── modules-view/              # Frontend (Next.js pages & components)
+│   │   ├── pages/
+│   │   │   ├── index.js           # Landing page
+│   │   │   ├── register.js        # User registration
+│   │   │   ├── login.js           # User login
+│   │   │   ├── dashboard.js       # Main dashboard
+│   │   │   ├── accounts.js        # Social media accounts management
+│   │   │   ├── posts/
+│   │   │   │   ├── create.js      # Create new post
+│   │   │   │   ├── history.js     # Post history
+│   │   │   │   └── [jobId].js     # Job status detail page
+│   │   │   ├── settings/
+│   │   │   │   ├── profile.js     # User profile
+│   │   │   │   ├── agents.js      # Installed agents list
+│   │   │   │   └── install.js     # Agent installation page
+│   │   │   ├── admin/             # Superadmin only
+│   │   │   │   ├── micro-actions.js
+│   │   │   │   └── workflows.js
+│   │   │   └── api/               # Next.js API routes
+│   │   │       ├── auth/
+│   │   │       │   ├── register.js
+│   │   │       │   ├── login.js
+│   │   │       │   └── verify.js
+│   │   │       ├── accounts/
+│   │   │       │   ├── add.js
+│   │   │       │   ├── list.js
+│   │   │       │   └── verify.js
+│   │   │       ├── posts/
+│   │   │       │   ├── create.js
+│   │   │       │   └── upload.js  # Cloudinary upload
+│   │   │       ├── jobs/
+│   │   │       │   ├── [jobId]/
+│   │   │       │   │   └── status.js
+│   │   │       │   └── history.js
+│   │   │       ├── client/        # Client agent API endpoints
+│   │   │       │   ├── register.js    # Register new client
+│   │   │       │   ├── heartbeat.js   # Client heartbeat
+│   │   │       │   ├── jobs/
+│   │   │       │   │   ├── pending.js # Get pending jobs
+│   │   │       │   │   └── update.js  # Update job status
+│   │   │       │   └── status.js      # Check client online
+│   │   │       ├── clients/
+│   │   │       │   └── list.js    # List user's clients
+│   │   │       ├── admin/         # Superadmin endpoints
+│   │   │       │   ├── micro-actions/
+│   │   │       │   │   ├── create.js
+│   │   │       │   │   ├── list.js
+│   │   │       │   │   └── [id].js
+│   │   │       │   └── workflows/
+│   │   │       │       ├── create.js
+│   │   │       │       ├── list.js
+│   │   │       │       └── [id].js
+│   │   │       └── installer/
+│   │   │           └── download.js    # Generate custom installer
+│   │   │
+│   │   ├── components/
+│   │   │   ├── Layout.js          # Main layout wrapper
+│   │   │   ├── Navbar.js
+│   │   │   ├── AccountCard.js     # Social account display
+│   │   │   ├── PostComposer.js    # Post creation form
+│   │   │   ├── JobStatus.js       # Job progress display
+│   │   │   ├── AgentStatus.js     # Agent online/offline indicator
+│   │   │   ├── ImageUploader.js   # Cloudinary upload component
+│   │   │   ├── Modal.js           # Reusable modal
+│   │   │   └── admin/
+│   │   │       ├── MicroActionEditor.js
+│   │   │       └── WorkflowBuilder.js
+│   │   │
+│   │   └── utils/
+│   │       ├── api.js             # API client wrapper
+│   │       ├── encryption.js      # Web Crypto API helpers
+│   │       ├── supabase.js        # Supabase client
+│   │       └── constants.js       # Platform configs, limits
+│   │
+│   ├── modules-logic/              # Backend business logic
+│   │   ├── services/
+│   │   │   ├── auth.js            # Authentication logic
+│   │   │   ├── encryption.js      # Server-side encryption (AES)
+│   │   │   ├── cloudinary.js      # Image upload service
+│   │   │   ├── jobs.js            # Job queue management
+│   │   │   ├── accounts.js        # Account CRUD
+│   │   │   ├── clients.js         # Client management
+│   │   │   ├── workflows.js       # Workflow execution logic
+│   │   │   └── email.js           # Email notifications (Supabase)
+│   │   │
+│   │   ├── models/
+│   │   │   ├── User.js            # User model helpers
+│   │   │   ├── Account.js
+│   │   │   ├── Job.js
+│   │   │   ├── Client.js
+│   │   │   ├── MicroAction.js
+│   │   │   └── Workflow.js
+│   │   │
+│   │   └── middleware/
+│   │       ├── auth.js            # JWT verification
+│   │       ├── admin.js           # Superadmin check
+│   │       └── rateLimit.js       # Rate limiting
+│   │
+│   ├── modules-agents/             # Browser automation agents
+│   │   ├── base/
+│   │   │   └── BaseAgent.js       # Abstract agent class
+│   │   │
+│   │   ├── platforms/
+│   │   │   ├── InstagramAgent.js
+│   │   │   ├── FacebookAgent.js
+│   │   │   └── TwitterAgent.js
+│   │   │
+│   │   └── utils/
+│   │       ├── stealth.js         # Anti-detection
+│   │       ├── human-behavior.js  # Random delays, typing
+│   │       └── browser.js         # Browser finder utility
+│   │
+│   ├── modules-client/             # Local client agent
+│   │   ├── agent.js               # Main agent entry point
+│   │   ├── poller.js              # API polling logic
+│   │   ├── executor.js            # Workflow executor
+│   │   ├── logger.js              # File logging
+│   │   └── config.js              # Load .env config
+│   │
+│   └── modules-installer/          # Client installer builder
+│       ├── builder.js             # Generate custom installer
+│       ├── template/
+│       │   ├── install.bat        # Windows batch script
+│       │   ├── register-protocol.reg # Registry template
+│       │   └── uninstall.bat
+│       └── package.js             # Bundle agent files
+│
+├── public/
+│   ├── images/
+│   ├── icons/
+│   └── downloads/                 # Temporary installer storage
+│
+├── docs/
+│   ├── API.md                     # API documentation
+│   ├── WORKFLOWS.md               # How to create workflows
+│   └── DEPLOYMENT.md              # Deployment guide
+│
+├── .env.example                   # Environment variables template
+├── .gitignore
+├── package.json
+├── next.config.js
+└── README.md
+
+=============================================================================
+DATABASE SCHEMA (Supabase PostgreSQL)
+=============================================================================
+
+Table: users
+------------
+id                UUID PRIMARY KEY DEFAULT uuid_generate_v4()
+email             VARCHAR(255) UNIQUE NOT NULL
+password_hash     VARCHAR(255) NOT NULL
+email_verified    BOOLEAN DEFAULT FALSE
+tier              VARCHAR(20) DEFAULT 'free' (free/premium)
+created_at        TIMESTAMP DEFAULT NOW()
+updated_at        TIMESTAMP DEFAULT NOW()
+
+Table: clients
+--------------
+id                UUID PRIMARY KEY DEFAULT uuid_generate_v4()
+user_id           UUID REFERENCES users(id) ON DELETE CASCADE
+client_id         VARCHAR(100) UNIQUE NOT NULL
+client_name       VARCHAR(255)
+install_path      TEXT
+platform          VARCHAR(50) (win32/darwin/linux)
+os_version        VARCHAR(100)
+status            VARCHAR(20) (installed/online/sleeping/error)
+api_token         TEXT NOT NULL
+token_expires_at  TIMESTAMP
+installed_at      TIMESTAMP DEFAULT NOW()
+last_seen         TIMESTAMP
+last_heartbeat    TIMESTAMP
+agent_version     VARCHAR(20)
+total_jobs        INTEGER DEFAULT 0
+
+Table: accounts
+---------------
+id                UUID PRIMARY KEY DEFAULT uuid_generate_v4()
+user_id           UUID REFERENCES users(id) ON DELETE CASCADE
+platform          VARCHAR(50) (instagram/facebook/twitter)
+username          VARCHAR(255)
+encrypted_password TEXT NOT NULL
+encrypted_cookies  TEXT
+status            VARCHAR(20) (pending/active/login_failed/needs_reauth)
+last_verified_at  TIMESTAMP
+last_used_at      TIMESTAMP
+created_at        TIMESTAMP DEFAULT NOW()
+
+Table: jobs
+-----------
+id                UUID PRIMARY KEY DEFAULT uuid_generate_v4()
+user_id           UUID REFERENCES users(id) ON DELETE CASCADE
+job_type          VARCHAR(50) (post/verify_account)
+status            VARCHAR(20) (queued/processing/completed/failed/stalled)
+content           JSONB (caption, image_url, etc.)
+target_accounts   UUID[] (array of account IDs)
+results           JSONB (array of results per account)
+created_at        TIMESTAMP DEFAULT NOW()
+processed_at      TIMESTAMP
+expires_at        TIMESTAMP
+
+Table: micro_actions
+--------------------
+id                UUID PRIMARY KEY DEFAULT uuid_generate_v4()
+name              VARCHAR(255) NOT NULL
+description       TEXT
+type              VARCHAR(50) (click/type/wait/navigate/upload/extract)
+platform          VARCHAR(50) (instagram/facebook/twitter/all)
+params            JSONB (selector, text, duration, etc.)
+created_by        UUID REFERENCES users(id)
+created_at        TIMESTAMP DEFAULT NOW()
+version           VARCHAR(20) DEFAULT '1.0.0'
+
+Table: workflows
+----------------
+id                UUID PRIMARY KEY DEFAULT uuid_generate_v4()
+name              VARCHAR(255) NOT NULL
+platform          VARCHAR(50)
+type              VARCHAR(50) (auth/post/story/etc)
+steps             JSONB (array of {micro_action_id, params})
+requires_auth     BOOLEAN DEFAULT FALSE
+auth_workflow_id  UUID REFERENCES workflows(id)
+is_active         BOOLEAN DEFAULT TRUE
+created_by        UUID REFERENCES users(id)
+created_at        TIMESTAMP DEFAULT NOW()
+version           VARCHAR(20) DEFAULT '1.0.0'
+
+=============================================================================
