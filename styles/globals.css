@@ -12,3 +12,10 @@ body {
 ::-webkit-scrollbar {
   width: 0;
 }
+.glass {
+  background: rgba(255, 255, 255, 0.2);
+  box-shadow: 20px 20px 40px -6px rgba(0, 0, 0, 0.2);
+  backdrop-filter: blur(6.6px);
+  -webkit-backdrop-filter: blur(6.6px);
+  border-radius: 10px;
+}

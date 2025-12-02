@@ -3,8 +3,8 @@ import Stack from "./stack";
 const About = () => {
   return (
     <section className="w-full px-3 bg-light">
-      <div className="flex items-start justify-center gap-4">
-        <p className="w-1/2 font-semibold text-xl text-dark text-justify h-full">
+      <div className="flex flex-col md:flex-row items-start justify-center gap-4">
+        <p className="w-full md:w-1/2 font-semibold text-xl text-dark text-justify h-full">
           Post Automation Platform is a powerful web-based solution designed to
           streamline your social media management workflow. We understand that
           managing multiple social media accounts can be time-consuming and

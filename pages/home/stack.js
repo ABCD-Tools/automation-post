@@ -29,9 +29,9 @@ const Stack = () => {
   ];
 
   return (
-    <div className="flex flex-wrap w-1/2 gap-1">
+    <div className="flex flex-wrap w-full md:w-1/2 gap-1">
       {steps.map((step, index) => (
-        <div key={index} className="relative flex flex-wrap w-[45%]">
+        <div key={index} className="relative flex flex-wrap w-full md:w-[45%]">
           <div className="bg-white p-4 rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 h-full border border-gray-100">
             <div className="text-2xl font-bold text-blue-100 mb-4">
               {step.number}
