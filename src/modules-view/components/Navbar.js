@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 
 const Navbar = () => {
   const listNav = [
@@ -16,7 +17,7 @@ const Navbar = () => {
               href="/"
               className="text-xl font-bold text-light transition-colors"
             >
-              Post Automation
+              <Image src="/icon0.svg" alt="ABCD Tools" width={32} height={32} />
             </Link>
           </div>
 
