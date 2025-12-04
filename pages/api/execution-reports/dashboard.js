@@ -9,7 +9,7 @@
  */
 
 import { ExecutionReportService } from '../../../src/modules-logic/services/execution-report-service.js';
-import { verifyToken } from '../../../src/modules-logic/middleware/auth.js';
+import { authenticateRequest } from '../../../src/modules-logic/middleware/auth.js';
 
 export default async function handler(req, res) {
   // Only allow GET
@@ -22,15 +22,16 @@ export default async function handler(req, res) {
 
   try {
     // Verify authentication
-    const authResult = await verifyToken(req);
-    if (!authResult.valid) {
+    let userId;
+    try {
+      const user = await authenticateRequest(req);
+      userId = user.id;
+    } catch (authError) {
       return res.status(401).json({
         success: false,
         error: 'Unauthorized'
       });
     }
-
-    const userId = authResult.userId;
     const { platform, startDate, endDate } = req.query;
 
     // Initialize service

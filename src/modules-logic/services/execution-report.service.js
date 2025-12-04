@@ -4,7 +4,10 @@
  * Phase 7.2 - Database Integration
  */
 
-import { supabase } from '../../modules-view/utils/supabase.js';
+import { createSupabaseServiceRoleClient } from '../../modules-view/utils/supabase.js';
+
+// Create a singleton supabase client for server-side use
+const supabase = createSupabaseServiceRoleClient();
 
 export class ExecutionReportService {
   /**
