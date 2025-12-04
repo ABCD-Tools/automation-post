@@ -1,9 +1,27 @@
 // API client wrapper for frontend calls to Next.js API routes.
 // Keep all `fetch` details here so page components stay focused on UI.
 
+// Get auth token from localStorage or sessionStorage
+function getAuthToken() {
+  if (typeof window === 'undefined') return null;
+  // Try localStorage first (persistent)
+  const token = localStorage.getItem('auth_token') || sessionStorage.getItem('auth_token');
+  return token;
+}
+
 async function requestJson(path, options = {}) {
+  const token = getAuthToken();
+  const headers = {
+    'Content-Type': 'application/json',
+    ...(options.headers || {}),
+  };
+
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+
   const res = await fetch(path, {
-    headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
+    headers,
     ...options,
   });
 
@@ -28,16 +46,35 @@ export function getJson(path) {
   return requestJson(path, { method: 'GET' });
 }
 
-export function postJson(path, body) {
+export function postJson(path, body, method = 'POST') {
   return requestJson(path, {
-    method: 'POST',
+    method,
     body: JSON.stringify(body),
   });
 }
 
 // Auth-specific helpers
 export async function loginWithEmailPassword({ email, password }) {
-  return postJson('/api/auth/login', { email, password });
+  const data = await postJson('/api/auth/login', { email, password });
+
+  // Store access token for authenticated API calls
+  if (typeof window !== 'undefined') {
+    const token = data?.session?.access_token;
+    if (token) {
+      try {
+        localStorage.setItem('auth_token', token);
+      } catch {
+        // Fallback to sessionStorage if localStorage is unavailable
+        try {
+          sessionStorage.setItem('auth_token', token);
+        } catch {
+          // Ignore storage errors
+        }
+      }
+    }
+  }
+
+  return data;
 }
 
 export async function registerWithEmailPassword({ email, password }) {

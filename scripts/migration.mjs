@@ -1,8 +1,15 @@
-// scripts/migrate.js
-const fs = require('fs');
-const path = require('path');
-const { spawnSync } = require('child_process');
-require('dotenv').config();
+// scripts/migration.mjs
+import fs from 'fs';
+import path from 'path';
+import { spawnSync } from 'child_process';
+import { fileURLToPath } from 'url';
+import { dirname } from 'path';
+import dotenv from 'dotenv';
+
+dotenv.config();
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 const MIGRATIONS_DIR = path.join(__dirname, '../supabase/migrations');
 const DATABASE_URL = process.env.DATABASE_URL;
@@ -158,3 +165,4 @@ function main() {
 }
 
 main();
+

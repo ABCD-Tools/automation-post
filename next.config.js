@@ -12,6 +12,7 @@ const nextConfig = {
       '@modules-logic': path.resolve(__dirname, 'src/modules-logic'),
       '@modules-agents': path.resolve(__dirname, 'src/modules-agents'),
       '@modules-view': path.resolve(__dirname, 'src/modules-view'),
+      '@modules-recorder': path.resolve(__dirname, 'src/modules-recorder'),
     };
     return config;
   },

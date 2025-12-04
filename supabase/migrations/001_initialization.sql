@@ -56,32 +56,6 @@ create table if not exists public.jobs (
     expires_at timestamptz
 );
 
-create table if not exists public.micro_actions (
-    id uuid primary key default uuid_generate_v4(),
-    name varchar(255) not null,
-    description text,
-    type varchar(50),
-    platform varchar(50),
-    params jsonb,
-    created_by uuid references public.users(id),
-    created_at timestamptz default timezone('utc', now()),
-    version varchar(20) default '1.0.0'
-);
-
-create table if not exists public.workflows (
-    id uuid primary key default uuid_generate_v4(),
-    name varchar(255) not null,
-    platform varchar(50),
-    type varchar(50),
-    steps jsonb,
-    requires_auth boolean default false,
-    auth_workflow_id uuid references public.workflows(id),
-    is_active boolean default true,
-    created_by uuid references public.users(id),
-    created_at timestamptz default timezone('utc', now()),
-    version varchar(20) default '1.0.0'
-);
-
 -- Helpful indexes
 create index if not exists idx_clients_user_id on public.clients (user_id);
 create index if not exists idx_accounts_user_id on public.accounts (user_id);

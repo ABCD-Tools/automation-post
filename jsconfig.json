@@ -6,7 +6,8 @@
       "@utils/*": ["src/modules-view/utils/*"],
       "@modules-logic/*": ["src/modules-logic/*"],
       "@modules-agents/*": ["src/modules-agents/*"],
-      "@modules-view/*": ["src/modules-view/*"]
+      "@modules-view/*": ["src/modules-view/*"],
+      "@modules-recorder/*": ["src/modules-recorder/*"]
     }
   },
   "exclude": ["node_modules", ".next"]

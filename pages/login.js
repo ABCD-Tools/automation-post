@@ -1,11 +1,13 @@
 import { useState } from 'react';
+import { useRouter } from 'next/router';
 import { toast } from 'react-toastify';
-import { loginWithEmailPassword } from '../src/modules-view/utils/api';
+import { loginWithEmailPassword } from '@utils/api';
 
 export default function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const router = useRouter();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -14,7 +16,8 @@ export default function Login() {
     try {
       await loginWithEmailPassword({ email, password });
       toast.success('Login successful.');
-      // TODO: store session / redirect to dashboard
+      // Redirect to admin micro-actions dashboard by default
+      router.push('/admin/micro-actions');
     } catch (err) {
       toast.error(err.message || 'Login failed');
     } finally {

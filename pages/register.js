@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { toast } from 'react-toastify';
-import { registerWithEmailPassword } from '../src/modules-view/utils/api';
+import { registerWithEmailPassword } from '@utils/api';
 
 export default function Register() {
   const [email, setEmail] = useState('');

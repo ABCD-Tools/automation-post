@@ -20,8 +20,6 @@ export default function Document() {
         {/* Additional Icons (if needed) */}
         <link rel="icon" type="image/svg+xml" href="/icon0.svg" />
         <link rel="icon" type="image/png" href="/icon1.png" />
-
-        <title>ABCD Tools</title>
       </Head>
       <body>
         <Main />

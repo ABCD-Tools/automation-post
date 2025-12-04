@@ -1,7 +1,14 @@
-const fs = require('fs');
-const path = require('path');
-const { spawnSync } = require('child_process');
-require('dotenv').config();
+import fs from 'fs';
+import path from 'path';
+import { spawnSync } from 'child_process';
+import { fileURLToPath } from 'url';
+import { dirname } from 'path';
+import dotenv from 'dotenv';
+
+dotenv.config();
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 const SEEDERS_DIR = path.join(__dirname, '../supabase/seeders');
 const DATABASE_URL = process.env.DATABASE_URL;
@@ -41,7 +48,7 @@ function getSeederFiles() {
 
   return fs
     .readdirSync(SEEDERS_DIR)
-    .filter((file) => file.endsWith('.sql') || file.endsWith('.js'))
+    .filter((file) => file.endsWith('.sql') || file.endsWith('.js') || file.endsWith('.mjs'))
     .sort();
 }
 
@@ -67,13 +74,18 @@ async function runSeeder(filePath) {
     return;
   }
 
-  if (fileName.endsWith('.js')) {
+  if (fileName.endsWith('.js') || fileName.endsWith('.mjs')) {
     try {
-      const seeder = require(filePath);
-      if (typeof seeder !== 'function') {
+      // Convert file path to file:// URL for import
+      const fileUrl = path.isAbsolute(filePath) 
+        ? `file://${filePath}` 
+        : `file://${path.resolve(filePath)}`;
+      const seeder = await import(fileUrl);
+      const seederFunc = seeder.default || seeder;
+      if (typeof seederFunc !== 'function') {
         throw new Error('Seeder file must export a function.');
       }
-      await seeder();
+      await seederFunc();
       console.log(`✅ JS seeder completed: ${fileName}`);
     } catch (err) {
       console.error(`❌ JS seeder failed: ${fileName}`);
@@ -121,5 +133,4 @@ main().catch((err) => {
   console.error('❌ Seed process failed:', err);
   process.exit(1);
 });
-
 

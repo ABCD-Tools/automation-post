@@ -1,5 +1,7 @@
-const { createClient } = require('@supabase/supabase-js');
-require('dotenv').config();
+import { createClient } from '@supabase/supabase-js';
+import dotenv from 'dotenv';
+
+dotenv.config();
 
 async function activateAdminUser() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -52,4 +54,5 @@ async function activateAdminUser() {
   }
 }
 
-module.exports = activateAdminUser;
+export default activateAdminUser;
+
