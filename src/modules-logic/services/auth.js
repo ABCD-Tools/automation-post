@@ -69,3 +69,107 @@ export async function getUserFromAccessToken(accessToken) {
 
   return data.user;
 }
+
+/**
+ * Logout user by invalidating session
+ * Note: With Supabase, logout is typically handled client-side by clearing tokens
+ * This endpoint provides server-side confirmation
+ */
+export async function logout(accessToken) {
+  // Verify token is valid before logout
+  const user = await getUserFromAccessToken(accessToken);
+  
+  // With Supabase, we can't directly invalidate tokens server-side
+  // The client should clear tokens from storage
+  // This endpoint confirms logout request
+  return { success: true, userId: user.id };
+}
+
+/**
+ * Request password reset email
+ */
+export async function requestPasswordReset(email) {
+  const redirectTo = process.env.NEXT_PUBLIC_SITE_URL
+    ? `${process.env.NEXT_PUBLIC_SITE_URL}/reset-password`
+    : undefined;
+
+  const { data, error } = await supabaseServerClient.auth.resetPasswordForEmail(email, {
+    redirectTo,
+  });
+
+  if (error) {
+    throw error;
+  }
+
+  return data;
+}
+
+/**
+ * Confirm password reset with token and new password
+ */
+export async function confirmPasswordReset(token, newPassword) {
+  // Note: Supabase handles password reset via magic links
+  // This function would be used if implementing custom flow
+  // For now, Supabase handles this automatically via redirect
+  throw new Error('Password reset confirmation handled by Supabase via magic link');
+}
+
+/**
+ * Refresh access token using refresh token
+ */
+export async function refreshToken(refreshToken) {
+  const { data, error } = await supabaseServerClient.auth.refreshSession({
+    refresh_token: refreshToken,
+  });
+
+  if (error) {
+    throw error;
+  }
+
+  return data;
+}
+
+/**
+ * Change password for authenticated user
+ * Note: Supabase requires verifying current password by re-authenticating
+ * For security, we verify the current password first
+ */
+export async function changePassword(accessToken, currentPassword, newPassword) {
+  // First verify the user and get their email
+  const user = await getUserFromAccessToken(accessToken);
+  
+  if (!user.email) {
+    throw new Error('User email not found');
+  }
+
+  // Verify current password by attempting to sign in
+  // This ensures the user knows their current password
+  try {
+    await loginWithEmail(user.email, currentPassword);
+  } catch (error) {
+    throw new Error('Current password is incorrect');
+  }
+
+  // Create a client with the access token to update password
+  const userClient = createClient(supabaseUrl, supabaseAnonKey, {
+    auth: {
+      persistSession: false,
+    },
+    global: {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    },
+  });
+
+  // Update password using Supabase
+  const { data, error } = await userClient.auth.updateUser({
+    password: newPassword,
+  });
+
+  if (error) {
+    throw error;
+  }
+
+  return { success: true, user: data.user };
+}

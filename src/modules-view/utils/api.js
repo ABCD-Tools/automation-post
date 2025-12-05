@@ -53,6 +53,12 @@ export function postJson(path, body, method = 'POST') {
   });
 }
 
+export function deleteJson(path) {
+  return requestJson(path, {
+    method: 'DELETE',
+  });
+}
+
 // Auth-specific helpers
 export async function loginWithEmailPassword({ email, password }) {
   const data = await postJson('/api/auth/login', { email, password });
@@ -88,5 +94,12 @@ export function fetchAccounts() {
 
 export function fetchClients() {
   return getJson('/api/clients/list');
+}
+
+/**
+ * Logout user
+ */
+export async function logout() {
+  return postJson('/api/auth/logout', {});
 }
 

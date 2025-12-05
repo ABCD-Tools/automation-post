@@ -182,3 +182,118 @@ export async function verifyAccount(userId, accountId) {
 
   return job;
 }
+
+/**
+ * Get a single account by ID
+ * @param {string} userId - Supabase auth user ID
+ * @param {string} accountId - Account ID
+ * @returns {Promise<Object>} Account object
+ */
+export async function getAccount(userId, accountId) {
+  const { data: account, error } = await supabase
+    .from('accounts')
+    .select('*')
+    .eq('id', accountId)
+    .eq('user_id', userId)
+    .single();
+
+  if (error) {
+    if (error.code === 'PGRST116') {
+      throw new Error('Account not found');
+    }
+    throw new Error(`Failed to fetch account: ${error.message}`);
+  }
+
+  if (!account) {
+    throw new Error('Account not found or access denied');
+  }
+
+  // Don't return encrypted password and cookies
+  const { encrypted_password, encrypted_cookies, ...accountData } = account;
+  return accountData;
+}
+
+/**
+ * Update an account
+ * @param {string} userId - Supabase auth user ID
+ * @param {string} accountId - Account ID
+ * @param {Object} accountData - Account data to update
+ * @returns {Promise<Object>} Updated account object
+ */
+export async function updateAccount(userId, accountId, accountData) {
+  // Verify account belongs to user
+  const { data: existingAccount, error: checkError } = await supabase
+    .from('accounts')
+    .select('id')
+    .eq('id', accountId)
+    .eq('user_id', userId)
+    .single();
+
+  if (checkError || !existingAccount) {
+    throw new Error('Account not found or access denied');
+  }
+
+  // Build update object
+  const updateData = {};
+  if (accountData.username !== undefined) updateData.username = accountData.username;
+  if (accountData.encryptedPassword !== undefined) {
+    updateData.encrypted_password = accountData.encryptedPassword;
+  }
+  if (accountData.status !== undefined) updateData.status = accountData.status;
+  if (accountData.encryptedCookies !== undefined) {
+    updateData.encrypted_cookies = accountData.encryptedCookies;
+  }
+
+  if (Object.keys(updateData).length === 0) {
+    throw new Error('No valid fields to update');
+  }
+
+  const { data: account, error } = await supabase
+    .from('accounts')
+    .update(updateData)
+    .eq('id', accountId)
+    .eq('user_id', userId)
+    .select()
+    .single();
+
+  if (error) {
+    throw new Error(`Failed to update account: ${error.message}`);
+  }
+
+  // Don't return encrypted password and cookies
+  const { encrypted_password, encrypted_cookies, ...safeAccountData } = account;
+  return safeAccountData;
+}
+
+/**
+ * Delete an account
+ * @param {string} userId - Supabase auth user ID
+ * @param {string} accountId - Account ID
+ * @returns {Promise<Object>} Deletion confirmation
+ */
+export async function deleteAccount(userId, accountId) {
+  // Verify account belongs to user
+  const { data: existingAccount, error: checkError } = await supabase
+    .from('accounts')
+    .select('id')
+    .eq('id', accountId)
+    .eq('user_id', userId)
+    .single();
+
+  if (checkError || !existingAccount) {
+    throw new Error('Account not found or access denied');
+  }
+
+  // Hard delete the account
+  const { error } = await supabase
+    .from('accounts')
+    .delete()
+    .eq('id', accountId)
+    .eq('user_id', userId);
+
+  if (error) {
+    throw new Error(`Failed to delete account: ${error.message}`);
+  }
+
+  return { success: true, accountId };
+}

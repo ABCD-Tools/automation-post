@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { getJson } from '@utils/api';
+import DashboardNavbar from '@components/DashboardNavbar';
 
 export default function AdminDashboard() {
   const [loading, setLoading] = useState(true);
@@ -92,27 +93,19 @@ export default function AdminDashboard() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 p-6">
-      <div className="max-w-7xl mx-auto">
-        {/* Header */}
-        <header className="mb-8">
-          <div className="flex items-center justify-between">
+    <div className="min-h-screen bg-gray-50">
+      <DashboardNavbar />
+      <div className="pt-16 p-6">
+        <div className="max-w-7xl mx-auto">
+          {/* Header */}
+          <header className="mb-8">
             <div>
               <h1 className="text-3xl font-bold text-gray-900">Admin Dashboard</h1>
               <p className="text-sm text-gray-600 mt-1">
                 Manage micro-actions, workflows, and automation settings
               </p>
             </div>
-            {dashboard?.user && (
-              <div className="text-sm text-gray-600">
-                <span className="font-semibold">{dashboard.user.email}</span>
-                <span className="ml-2 px-2 py-0.5 rounded-full bg-purple-100 text-purple-800 text-xs font-medium">
-                  {dashboard.user.tier || 'admin'}
-                </span>
-              </div>
-            )}
-          </div>
-        </header>
+          </header>
 
         {/* Loading State */}
         {loading && (
@@ -266,8 +259,8 @@ export default function AdminDashboard() {
             </div>
           </>
         )}
+        </div>
       </div>
     </div>
   );
 }
-
