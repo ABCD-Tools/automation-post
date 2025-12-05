@@ -44,8 +44,8 @@ Uses CSS selectors or XPath to identify elements:
 selector: 'button.login-btn'
 
 // Instagram updates UI
-// Old: <button class="login-btn">Log In</button>
-// New: <button class="sign-in-button">Log In</button>
+// Old: <button className="login-btn">Log In</button>
+// New: <button className="sign-in-button">Log In</button>
 
 // Result: ❌ FAILS - Element not found
 ```
@@ -98,8 +98,8 @@ visual: {
 }
 
 // Instagram updates UI (class changed)
-// Old: <button class="login-btn">Log In</button>
-// New: <button class="sign-in-button">Log In</button>
+// Old: <button className="login-btn">Log In</button>
+// New: <button className="sign-in-button">Log In</button>
 
 // Visual executor:
 // 1. Tries selector: ❌ Fails (class changed)
@@ -130,12 +130,12 @@ visual: {
 
 **Before Update:**
 ```html
-<button class="login-btn" type="submit">Log In</button>
+<button className="login-btn" type="submit">Log In</button>
 ```
 
 **After Update:**
 ```html
-<button class="sign-in-button" type="submit">Log In</button>
+<button className="sign-in-button" type="submit">Log In</button>
 ```
 
 ### Selector-Based Approach ❌

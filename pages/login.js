@@ -2,7 +2,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/router";
 import { toast } from "react-toastify";
-import { loginWithEmailPassword } from "../src/modules-view/utils/api";
+import { loginWithEmailPassword, getJson } from "../src/modules-view/utils/api";
 
 export default function Login() {
   const [email, setEmail] = useState("");
@@ -15,11 +15,16 @@ export default function Login() {
     setLoading(true);
 
     try {
-      await loginWithEmailPassword({ email, password });
+      const data = await loginWithEmailPassword({ email, password });
       toast.success("Login successful.");
-      // TODO: Default redirect to admin dashboard (for dashboard, after developer needs solved)
-      router.push('/admin');
 
+      const role = data?.user?.user_metadata?.role;
+      
+      if (role === 'admin') {
+        router.push('/admin');
+      } else {
+        router.push('/dashboard');  
+      }
     } catch (err) {
       toast.error(err.message || "Login failed");
     } finally {

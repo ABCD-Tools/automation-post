@@ -828,64 +828,64 @@ export class WorkflowExecutor {
     </style>
 </head>
 <body>
-    <div class="container">
-        <div class="header">
+    <div className="container">
+        <div className="header">
             <h1>🔍 Debug Report</h1>
-            <div class="meta">
+            <div className="meta">
                 <strong>Workflow:</strong> ${report.workflowId}<br>
                 <strong>Started:</strong> ${report.startTime}<br>
                 <strong>Duration:</strong> ${(report.duration / 1000).toFixed(2)}s
             </div>
         </div>
 
-        <div class="stats">
-            <div class="stat-card success">
-                <div class="label">Success Rate</div>
-                <div class="value">${report.overallStats.successRate}%</div>
+        <div className="stats">
+            <div className="stat-card success">
+                <div className="label">Success Rate</div>
+                <div className="value">${report.overallStats.successRate}%</div>
             </div>
-            <div class="stat-card">
-                <div class="label">Total Actions</div>
-                <div class="value">${report.overallStats.total}</div>
+            <div className="stat-card">
+                <div className="label">Total Actions</div>
+                <div className="value">${report.overallStats.total}</div>
             </div>
-            <div class="stat-card error">
-                <div class="label">Failed</div>
-                <div class="value">${report.overallStats.failed}</div>
+            <div className="stat-card error">
+                <div className="label">Failed</div>
+                <div className="value">${report.overallStats.failed}</div>
             </div>
-            <div class="stat-card time">
-                <div class="label">Avg Time</div>
-                <div class="value">${report.overallStats.averageTime}ms</div>
+            <div className="stat-card time">
+                <div className="label">Avg Time</div>
+                <div className="value">${report.overallStats.averageTime}ms</div>
             </div>
-            <div class="stat-card">
-                <div class="label">Avg Confidence</div>
-                <div class="value">${(report.overallStats.averageConfidence * 100).toFixed(1)}%</div>
+            <div className="stat-card">
+                <div className="label">Avg Confidence</div>
+                <div className="value">${(report.overallStats.averageConfidence * 100).toFixed(1)}%</div>
             </div>
         </div>
 
-        <div class="actions">
+        <div className="actions">
             ${this.debugScreenshots.map((debug, idx) => `
-                <div class="action-card ${debug.success ? 'success' : 'failed'}">
-                    <div class="action-header">
+                <div className="action-card ${debug.success ? 'success' : 'failed'}">
+                    <div className="action-header">
                         <div>
-                            <div class="action-title">${idx + 1}. ${debug.actionName}</div>
-                            <div class="action-meta">
+                            <div className="action-title">${idx + 1}. ${debug.actionName}</div>
+                            <div className="action-meta">
                                 Type: ${debug.actionType} • 
                                 Method: ${debug.method} • 
                                 Duration: ${debug.duration}ms
-                                ${debug.confidence ? ` • Confidence: <span class="confidence">${(debug.confidence * 100).toFixed(1)}%</span>` : ''}
+                                ${debug.confidence ? ` • Confidence: <span className="confidence">${(debug.confidence * 100).toFixed(1)}%</span>` : ''}
                             </div>
                         </div>
                         <div>
-                            <span class="badge ${debug.success ? 'success' : 'error'}">
+                            <span className="badge ${debug.success ? 'success' : 'error'}">
                                 ${debug.success ? '✓ Success' : '✗ Failed'}
                             </span>
-                            <span class="badge method">${debug.method}</span>
+                            <span className="badge method">${debug.method}</span>
                         </div>
                     </div>
 
                     ${debug.before || debug.after ? `
-                        <div class="screenshots">
+                        <div className="screenshots">
                             ${debug.before ? `
-                                <div class="screenshot-box">
+                                <div className="screenshot-box">
                                     <h4>Before</h4>
                                     <img src="${path.relative(path.dirname(outputPath), debug.before)}" 
                                          alt="Before screenshot"
@@ -893,7 +893,7 @@ export class WorkflowExecutor {
                                 </div>
                             ` : ''}
                             ${debug.after ? `
-                                <div class="screenshot-box">
+                                <div className="screenshot-box">
                                     <h4>After</h4>
                                     <img src="${path.relative(path.dirname(outputPath), debug.after)}" 
                                          alt="After screenshot"
@@ -904,7 +904,7 @@ export class WorkflowExecutor {
                     ` : ''}
 
                     ${debug.error ? `
-                        <div class="error-details">
+                        <div className="error-details">
                             <h4>⚠️ Error Details</h4>
                             <pre>${debug.error}</pre>
                         </div>

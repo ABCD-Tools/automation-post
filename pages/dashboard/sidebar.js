@@ -20,8 +20,8 @@ const Sidebar = () => {
         })}
       </section>
       <footer className="absolute bottom-0 w-full p-2 flex items-center justify-between">
-        <div class="rounded-full bg-light border border-dark size-10"></div>
-        <p class="text-blue-500">Logout</p>
+        <div className="rounded-full bg-light border border-dark size-10"></div>
+        <p className="text-blue-500">Logout</p>
       </footer>
     </div>
   );
