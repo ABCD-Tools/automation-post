@@ -24,6 +24,7 @@
     "test:visual": "node src/modules-client/visual-executor.test.js"
   },
   "dependencies": {
+    "@radix-ui/react-alert-dialog": "^1.1.15",
     "@supabase/supabase-js": "^2.38.0",
     "adm-zip": "^0.5.10",
     "archiver": "^6.0.1",
@@ -62,7 +63,8 @@
   },
   "pnpm": {
     "overrides": {
-      "glob": ">=10.5.0"
+      "glob": ">=10.5.0",
+      "jws": ">=3.2.3"
     },
     "onlyBuiltDependencies": [
       "bcrypt",

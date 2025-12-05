@@ -73,7 +73,7 @@ import { optimizeVisualData, validateVisualDataSize } from '@modules-logic/utils
  *         description: Micro-action not found
  *
  *   delete:
- *     summary: Soft delete a micro-action (sets is_active = false)
+ *     summary: Permanently delete a micro-action
  *     tags: [Admin]
  *     security:
  *       - bearerAuth: []
@@ -178,10 +178,10 @@ export default async function handler(req, res) {
 
       return res.status(200).json(data);
     } else if (req.method === 'DELETE') {
-      // Soft delete (set is_active = false)
+      // Hard delete (permanently remove from database)
       const { data, error } = await supabase
         .from('micro_actions')
-        .update({ is_active: false, updated_at: new Date().toISOString() })
+        .delete()
         .eq('id', id)
         .select()
         .single();
@@ -193,7 +193,11 @@ export default async function handler(req, res) {
         throw error;
       }
 
-      return res.status(200).json({ message: 'Micro-action deleted', data });
+      if (!data) {
+        return res.status(404).json({ error: 'Micro-action not found' });
+      }
+
+      return res.status(200).json({ message: 'Micro-action deleted successfully', data });
     } else {
       return res.status(405).json({ error: 'Method not allowed' });
     }

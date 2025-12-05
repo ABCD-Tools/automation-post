@@ -8,6 +8,7 @@ import { validateVisualData } from './utils/validation.mjs';
 import { replaceWithTemplate } from './utils/template-replacement.mjs';
 import { getPlatformConfig } from './config/platform.mjs';
 import { RecorderClientScript } from './client-script/recorderClientScript.mjs';
+import { saveFilesToCloud } from '../modules-logic/utils/saveFilesToCloud.mjs';
 
 /**
  * ActionRecorder - Records user interactions with VISUAL DATA (screenshots, coordinates, text)
@@ -45,6 +46,11 @@ export class ActionRecorder {
     this.platformConfig = null; // Platform-specific configuration
     this.injectionSuccess = true; // Track injection success
     this.currentPlatform = null; // Current platform being recorded
+    this.uploadQueue = []; // Queue for background uploads
+    this.isProcessingQueue = false; // Flag to prevent concurrent queue processing
+    this.uploadQueueInterval = null; // Interval for processing upload queue
+    this.sessionId = null; // Session ID for organizing uploads
+    this.lastActionCount = 0; // Track last action count for real-time capture
   }
 
   /**
@@ -55,8 +61,10 @@ export class ActionRecorder {
    */
   async startRecording(url, platform) {
     try {
+      const config = await getPlatformConfig(platform);
+
       // Launch browser with platform-specific configuration
-      const { browser, page, config } = await launchBrowser(platform);
+      const { browser, page } = await launchBrowser(config);
       this.browser = browser;
       this.page = page;
       this.platformConfig = config;
@@ -110,7 +118,10 @@ export class ActionRecorder {
       this.isRecording = true;
       console.log('✅ Recording started');
 
-      // Set up periodic action syncing (backup strategy)
+      // Generate session ID for organizing uploads
+      this.sessionId = `${platform}_${Date.now()}`;
+
+      // Set up periodic action syncing (backup strategy) + real-time screenshot capture
       this.syncInterval = setInterval(async () => {
         try {
           if (this.page && !this.page.isClosed()) {
@@ -118,6 +129,20 @@ export class ActionRecorder {
               return window.__recordedActions || [];
             });
             this.backupActions = actions;
+            
+            // Real-time screenshot capture: capture screenshots for new actions
+            if (actions.length > this.lastActionCount) {
+              const newActionIndices = [];
+              for (let i = this.lastActionCount; i < actions.length; i++) {
+                newActionIndices.push(i);
+              }
+              
+              for (const actionIndex of newActionIndices) {
+                await this.captureScreenshotForAction(actionIndex);
+              }
+              this.lastActionCount = actions.length;
+            }
+            
             if (actions.length > 0) {
               console.log(`🔄 Synced ${actions.length} actions to backup`);
             }
@@ -125,7 +150,10 @@ export class ActionRecorder {
         } catch (error) {
           // Silently ignore errors (page might be navigating)
         }
-      }, 5000);
+      }, 2000); // Check every 2 seconds for new actions
+
+      // Start upload queue processor
+      this.startUploadQueueProcessor();
 
       // Initialize navigation handler
       this.navigationHandler = new NavigationHandler(this);
@@ -395,236 +423,19 @@ export class ActionRecorder {
   }
 
   /**
-   * Server-side enrichment pass:
-   * For recorded actions that are missing screenshots, use Puppeteer + backup
-   * selectors to capture real visual.screenshot/contextScreenshot where possible.
+   * @deprecated This method is no longer used. Screenshots are now captured
+   * in real-time during recording, not after recording stops.
    * 
-   * This runs just before we close the browser, so it can still query the DOM.
-   * 
-   * IMPORTANT: Actions recorded on different pages (e.g., login page) won't be
-   * enrichable if we're now on a different page (e.g., feed page). We try to
-   * navigate back to the action's original page if needed.
+   * This method is kept for backward compatibility but will be removed in a future version.
    * 
    * @param {Array} recordedActions
-   * @returns {Promise<Array>} enriched actions
+   * @returns {Promise<Array>} Actions (unchanged, no enrichment)
    */
   async enrichRecordedActionsWithPuppeteer(recordedActions) {
-    // If page is gone, we can't enrich – just return original actions
-    if (!this.page) {
-      console.log('📸 Enrichment skipped: page is null');
-      return recordedActions;
-    }
-    try {
-      if (this.page.isClosed()) {
-        console.log('📸 Enrichment skipped: page is closed');
-        return recordedActions;
-      }
-    } catch {
-      console.log('📸 Enrichment skipped: page check failed');
-      return recordedActions;
-    }
-
-    console.log(`📸 Starting Puppeteer enrichment pass for ${recordedActions.length} actions...`);
-    const currentUrl = this.page.url();
-    console.log(`   Current page URL: ${currentUrl}`);
-
-    // Precompute type groups per selector so we can detect
-    // \"first time type\" and \"after stop type\".
-    const firstTypeIndexBySelector = new Map();
-    const lastTypeIndexBySelector = new Map();
-    for (let i = 0; i < recordedActions.length; i++) {
-      const a = recordedActions[i];
-      if (a && a.type === 'type' && a.backup_selector) {
-        const sel = a.backup_selector;
-        if (!firstTypeIndexBySelector.has(sel)) {
-          firstTypeIndexBySelector.set(sel, i);
-        }
-        lastTypeIndexBySelector.set(sel, i);
-      }
-    }
-
-    const enriched = [];
-    let enrichedCount = 0;
-    let skippedCount = 0;
-    let notFoundCount = 0;
-
-    for (let i = 0; i < recordedActions.length; i++) {
-      const action = recordedActions[i];
-
-      const hasScreenshot =
-        !!action?.visual?.screenshot || !!action?.visual?.contextScreenshot;
-
-      // Handle page-level screenshots for navigations:
-      // - first time site loaded (initial navigate)
-      // - after change url (subsequent navigate actions)
-      if (action.type === 'navigate') {
-        if (hasScreenshot) {
-          enriched.push(action);
-          skippedCount++;
-          continue;
-        }
-
-        try {
-          const targetUrl = action.url || currentUrl;
-          if (targetUrl && targetUrl.startsWith('http')) {
-            console.log(`   🌐 Enriching navigation action ${i + 1} with full-page screenshot for URL: ${targetUrl}`);
-            try {
-              if (this.page.url() !== targetUrl) {
-                await this.page.goto(targetUrl, { waitUntil: 'networkidle2', timeout: 15000 });
-                await new Promise(resolve => setTimeout(resolve, 2000));
-              }
-            } catch (navErr) {
-              console.warn(`   ⚠️ Navigation action ${i + 1}: failed to navigate before screenshot:`, navErr?.message || navErr);
-            }
-          }
-
-          const pageShot = await this.page.screenshot({
-            encoding: 'base64',
-            type: 'png',
-            fullPage: true,
-          });
-
-          if (pageShot) {
-            enrichedCount++;
-            console.log(`   ✅ Navigation action ${i + 1} enriched with full-page screenshot`);
-            enriched.push({
-              ...action,
-              visual: {
-                ...(action.visual || {}),
-                screenshot: `data:image/png;base64,${pageShot}`,
-                timestamp: Date.now(),
-              },
-            });
-          } else {
-            console.log(`   ⚠️ Navigation action ${i + 1}: page screenshot was empty`);
-            enriched.push(action);
-          }
-        } catch (navShotError) {
-          console.warn(`   ⚠️ Failed to enrich navigation action ${i + 1}, keeping original:`, navShotError?.message || navShotError);
-          enriched.push(action);
-        }
-        continue;
-      }
-
-      // Only enrich click/type element actions that have a backup selector and no screenshots yet
-      const isClickableType = action.type === 'click' || action.type === 'type';
-      const hasSelector = !!action.backup_selector;
-
-      if (!isClickableType || !hasSelector || hasScreenshot) {
-        enriched.push(action);
-        skippedCount++;
-        continue;
-      }
-
-      try {
-        // Check if action was recorded on a different page - if so, try to navigate back
-        const actionUrl = action.url || currentUrl;
-        const needsNavigation = actionUrl !== currentUrl && actionUrl.startsWith('http');
-        
-        if (needsNavigation) {
-          console.log(`   🔄 Action ${i + 1} was on different page, navigating to: ${actionUrl}`);
-          try {
-            await this.page.goto(actionUrl, { waitUntil: 'networkidle2', timeout: 15000 });
-            await new Promise(resolve => setTimeout(resolve, 2000)); // Wait for page to stabilize
-            console.log(`   ✅ Navigated to action's original page`);
-          } catch (navError) {
-            console.warn(`   ⚠️ Failed to navigate to action's page, trying current page: ${navError?.message || navError}`);
-          }
-        }
-
-        const handle = await this.page.$(action.backup_selector);
-        if (!handle) {
-          console.log(`   ⚠️ Action ${i + 1} (${action.type}): selector not found: ${action.backup_selector?.substring(0, 50)}...`);
-          enriched.push(action);
-          notFoundCount++;
-          continue;
-        }
-
-        console.log(`   📸 Enriching action ${i + 1} (${action.type})...`);
-
-        if (action.type === 'click') {
-          const absPos = action.visual?.position?.absolute || {};
-          const clientX = typeof absPos.x === 'number' ? absPos.x : undefined;
-          const clientY = typeof absPos.y === 'number' ? absPos.y : undefined;
-
-          if (clientX == null || clientY == null) {
-            console.log(`   ⚠️ Action ${i + 1}: missing click coordinates`);
-            enriched.push(action);
-            skippedCount++;
-            continue;
-          }
-
-          const enrichedClick = await this.captureClick(handle, clientX, clientY);
-
-          // Check if screenshot was actually captured
-          const hasScreenshotNow = !!(enrichedClick.visual?.screenshot || enrichedClick.visual?.contextScreenshot);
-          if (hasScreenshotNow) {
-            enrichedCount++;
-            console.log(`   ✅ Action ${i + 1} enriched with screenshot`);
-          } else {
-            console.log(`   ⚠️ Action ${i + 1} enrichment completed but no screenshot captured`);
-          }
-
-          // Merge: keep original high-level fields, but override visual + backup_selector/exec method if provided
-          enriched.push({
-            ...action,
-            visual: {
-              ...(action.visual || {}),
-              ...(enrichedClick.visual || {}),
-            },
-            backup_selector: action.backup_selector || enrichedClick.backup_selector,
-            execution_method: action.execution_method || enrichedClick.execution_method,
-          });
-        } else if (action.type === 'type') {
-          const sel = action.backup_selector;
-          const firstIdx = firstTypeIndexBySelector.get(sel);
-          const lastIdx = lastTypeIndexBySelector.get(sel);
-          const isFirstType = firstIdx === i;
-          const isLastType = lastIdx === i;
-
-          // Only screenshot for \"first time type\" and \"after stop type\"
-          if (!isFirstType && !isLastType) {
-            console.log(`   ⏭️ Skipping type action ${i + 1} for screenshot (not first/last for selector)`);
-            enriched.push(action);
-            skippedCount++;
-            continue;
-          }
-
-          const value = action.value || '';
-          const enrichedType = await this.captureType(handle, value);
-
-          // Check if screenshot was actually captured
-          const hasScreenshotNow = !!(enrichedType.visual?.screenshot);
-          if (hasScreenshotNow) {
-            enrichedCount++;
-            console.log(`   ✅ Type action ${i + 1} (${isFirstType ? 'first' : 'last'}) enriched with screenshot`);
-          } else {
-            console.log(`   ⚠️ Type action ${i + 1} enrichment completed but no screenshot captured`);
-          }
-
-          enriched.push({
-            ...action,
-            visual: {
-              ...(action.visual || {}),
-              ...(enrichedType.visual || {}),
-            },
-            backup_selector: action.backup_selector || enrichedType.backup_selector,
-            execution_method: action.execution_method || enrichedType.execution_method,
-            value: enrichedType.value ?? action.value,
-          });
-        } else {
-          enriched.push(action);
-          skippedCount++;
-        }
-      } catch (error) {
-        console.warn(`   ⚠️ Failed to enrich action ${i + 1} with Puppeteer, keeping original:`, error?.message || error);
-        enriched.push(action);
-        skippedCount++;
-      }
-    }
-
-    console.log(`📸 Enrichment complete: ${enrichedCount} enriched, ${notFoundCount} not found, ${skippedCount} skipped`);
-    return enriched;
+    // Screenshots are now captured in real-time during recording
+    // No post-recording enrichment needed
+    console.log('📸 Enrichment pass skipped (screenshots captured in real-time)');
+    return recordedActions;
   }
 
   /**
@@ -684,10 +495,319 @@ export class ActionRecorder {
   }
 
   /**
+   * Capture screenshot immediately after action is recorded (real-time)
+   * @param {number} actionIndex - Index of the action in window.__recordedActions
+   * @returns {Promise<void>}
+   */
+  async captureScreenshotForAction(actionIndex) {
+    if (!this.page || this.page.isClosed()) {
+      return;
+    }
+
+    try {
+      // Get action from page context
+      const action = await this.page.evaluate((index) => {
+        if (window.__recordedActions && window.__recordedActions[index]) {
+          return window.__recordedActions[index];
+        }
+        return null;
+      }, actionIndex);
+
+      if (!action) {
+        return;
+      }
+
+      // Skip if already has screenshot (and it's a URL)
+      if (action.visual?.screenshot && action.visual.screenshot.startsWith('http')) {
+        return; // Already uploaded
+      }
+
+      // Only capture for click, type, and navigate actions
+      if (!['click', 'type', 'navigate'].includes(action.type)) {
+        return;
+      }
+
+      // For navigate actions, capture full page screenshot
+      if (action.type === 'navigate') {
+        const screenshot = await this.page.screenshot({
+          encoding: 'base64',
+          type: 'png',
+          fullPage: true,
+        });
+        
+        if (screenshot) {
+          const dataUrl = `data:image/png;base64,${screenshot}`;
+          
+          // Update action in page context
+          await this.page.evaluate((index, screenshotData) => {
+            if (window.__recordedActions && window.__recordedActions[index]) {
+              if (!window.__recordedActions[index].visual) {
+                window.__recordedActions[index].visual = {};
+              }
+              window.__recordedActions[index].visual.screenshot = screenshotData;
+            }
+          }, actionIndex, dataUrl);
+          
+          console.log(`📸 Screenshot captured for navigation action ${actionIndex + 1}`);
+          
+          // Get updated action and queue for upload
+          const updatedAction = await this.page.evaluate((index) => {
+            return window.__recordedActions && window.__recordedActions[index] ? window.__recordedActions[index] : null;
+          }, actionIndex);
+          
+          if (updatedAction) {
+            this.queueUpload(updatedAction, actionIndex);
+          }
+        }
+        return;
+      }
+
+      // For click/type actions, try to capture element screenshot
+      if (action.backup_selector) {
+        try {
+          const handle = await this.page.$(action.backup_selector);
+          if (handle) {
+            if (action.type === 'click') {
+              const absPos = action.visual?.position?.absolute || {};
+              const clientX = typeof absPos.x === 'number' ? absPos.x : undefined;
+              const clientY = typeof absPos.y === 'number' ? absPos.y : undefined;
+
+              if (clientX != null && clientY != null) {
+                const enrichedClick = await this.captureClick(handle, clientX, clientY);
+                if (enrichedClick.visual?.screenshot) {
+                  // Update action in page context
+                  await this.page.evaluate((index, visualData) => {
+                    if (window.__recordedActions && window.__recordedActions[index]) {
+                      if (!window.__recordedActions[index].visual) {
+                        window.__recordedActions[index].visual = {};
+                      }
+                      window.__recordedActions[index].visual.screenshot = visualData.screenshot;
+                      if (visualData.contextScreenshot) {
+                        window.__recordedActions[index].visual.contextScreenshot = visualData.contextScreenshot;
+                      }
+                    }
+                  }, actionIndex, enrichedClick.visual);
+                  
+                  console.log(`📸 Screenshot captured for click action ${actionIndex + 1}`);
+                  
+                  // Get updated action and queue for upload
+                  const updatedAction = await this.page.evaluate((index) => {
+                    return window.__recordedActions && window.__recordedActions[index] ? window.__recordedActions[index] : null;
+                  }, actionIndex);
+                  
+                  if (updatedAction) {
+                    this.queueUpload(updatedAction, actionIndex);
+                  }
+                }
+              }
+            } else if (action.type === 'type') {
+              const enrichedType = await this.captureType(handle, action.value || '');
+              if (enrichedType.visual?.screenshot) {
+                // Update action in page context
+                await this.page.evaluate((index, visualData) => {
+                  if (window.__recordedActions && window.__recordedActions[index]) {
+                    if (!window.__recordedActions[index].visual) {
+                      window.__recordedActions[index].visual = {};
+                    }
+                    window.__recordedActions[index].visual.screenshot = visualData.screenshot;
+                  }
+                }, actionIndex, enrichedType.visual);
+                
+                console.log(`📸 Screenshot captured for type action ${actionIndex + 1}`);
+                
+                // Get updated action and queue for upload
+                const updatedAction = await this.page.evaluate((index) => {
+                  return window.__recordedActions && window.__recordedActions[index] ? window.__recordedActions[index] : null;
+                }, actionIndex);
+                
+                if (updatedAction) {
+                  this.queueUpload(updatedAction, actionIndex);
+                }
+              }
+            }
+          }
+        } catch (error) {
+          // Silently ignore - selector might not be available
+        }
+      }
+    } catch (error) {
+      // Silently ignore screenshot capture errors
+    }
+  }
+
+  /**
+   * Queue action for background upload
+   * @param {Object} action - Action with screenshot
+   * @param {number} actionIndex - Index of the action
+   */
+  queueUpload(action, actionIndex) {
+    // Only queue if screenshot is base64 (not already uploaded)
+    if (action.visual?.screenshot && !action.visual.screenshot.startsWith('http')) {
+      this.uploadQueue.push({
+        action,
+        actionIndex,
+        timestamp: Date.now(),
+      });
+      console.log(`☁️ Queued upload for action ${actionIndex + 1}`);
+    }
+  }
+
+  /**
+   * Start background upload queue processor
+   */
+  startUploadQueueProcessor() {
+    // Process queue every 3 seconds
+    this.uploadQueueInterval = setInterval(async () => {
+      await this.processUploadQueue();
+    }, 3000);
+  }
+
+  /**
+   * Process upload queue (non-blocking, background)
+   * @returns {Promise<void>}
+   */
+  async processUploadQueue() {
+    if (this.isProcessingQueue || this.uploadQueue.length === 0) {
+      return;
+    }
+
+    this.isProcessingQueue = true;
+
+    // Process up to 3 uploads at a time
+    const batch = this.uploadQueue.splice(0, 3);
+    
+    for (const item of batch) {
+      try {
+        const recordingData = {
+          sessionId: this.sessionId,
+          platform: this.currentPlatform || 'unknown',
+          recordedActions: [item.action],
+        };
+
+        const result = await saveFilesToCloud(recordingData, {
+          folder: 'recordings',
+          subfolder: this.sessionId,
+          getFilename: (action, idx, field) => {
+            const timestamp = action.timestamp || Date.now();
+            return `action_${idx}_${field}_${timestamp}`;
+          },
+          skipIfExists: true,
+          keepBase64OnError: true,
+          fileFields: ['screenshot', 'contextScreenshot', 'file', 'image'],
+        });
+
+        if (result.uploadedCount > 0) {
+          // Update action with uploaded URL
+          const updatedAction = result.updatedRecordingData.recordedActions[0];
+          if (updatedAction && this.page && !this.page.isClosed()) {
+            // Update action in page context
+            await this.page.evaluate((index, visualData) => {
+              if (window.__recordedActions && window.__recordedActions[index]) {
+                if (!window.__recordedActions[index].visual) {
+                  window.__recordedActions[index].visual = {};
+                }
+                if (visualData.screenshot) {
+                  window.__recordedActions[index].visual.screenshot = visualData.screenshot;
+                }
+                if (visualData.contextScreenshot) {
+                  window.__recordedActions[index].visual.contextScreenshot = visualData.contextScreenshot;
+                }
+              }
+            }, item.actionIndex, updatedAction.visual || {});
+            
+            // Also update local copy
+            Object.assign(item.action, updatedAction);
+            console.log(`✅ Uploaded action ${item.actionIndex + 1} screenshot`);
+          }
+        }
+      } catch (error) {
+        console.warn(`⚠️ Upload failed for action ${item.actionIndex + 1}, keeping base64:`, error.message);
+        // Keep base64 on error (already handled by keepBase64OnError)
+      }
+    }
+
+    this.isProcessingQueue = false;
+  }
+
+  /**
+   * Wait for upload queue to finish
+   * @param {number} maxWaitTime - Maximum time to wait in milliseconds (default: 30000)
+   * @returns {Promise<void>}
+   */
+  async waitForUploadQueue(maxWaitTime = 30000) {
+    const startTime = Date.now();
+    
+    while (this.uploadQueue.length > 0 || this.isProcessingQueue) {
+      if (Date.now() - startTime > maxWaitTime) {
+        console.warn(`⚠️ Upload queue timeout after ${maxWaitTime}ms, ${this.uploadQueue.length} items remaining`);
+        break;
+      }
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
+    
+    if (this.uploadQueue.length === 0 && !this.isProcessingQueue) {
+      console.log('✅ All uploads complete');
+    }
+  }
+
+  /**
+   * Upload remaining screenshots to cloud (batch upload at end)
+   * @param {Array} actions - Array of recorded actions
+   * @param {Object} options - Upload options
+   * @returns {Promise<Array>} Actions with Cloudinary URLs instead of base64
+   */
+  async uploadScreenshotsToCloudinary(actions, options = {}) {
+    if (!actions || actions.length === 0) {
+      return actions;
+    }
+
+    try {
+      console.log('☁️ Uploading remaining screenshots to cloud...');
+      
+      const recordingData = {
+        sessionId: this.sessionId || `${this.currentPlatform}_${Date.now()}`,
+        platform: this.currentPlatform || 'unknown',
+        recordedActions: actions,
+      };
+
+      // Use new saveFilesToCloud API with proper options
+      const result = await saveFilesToCloud(recordingData, {
+        folder: 'recordings',
+        subfolder: this.sessionId,
+        getFilename: (action, idx, field) => {
+          const timestamp = action.timestamp || Date.now();
+          return `action_${idx}_${field}_${timestamp}`;
+        },
+        skipIfExists: true,
+        keepBase64OnError: true,
+        fileFields: ['screenshot', 'contextScreenshot', 'file', 'image'],
+        ...options,
+      });
+
+      console.log(`✅ Uploaded ${result.uploadedCount} file(s) to cloud`);
+      console.log(`⏭️ Skipped ${result.skippedCount} (already URLs)`);
+      if (result.errorCount > 0) {
+        console.warn(`❌ Failed ${result.errorCount} (kept base64)`);
+      }
+
+      // Return updated actions
+      return result.updatedRecordingData.recordedActions || actions;
+    } catch (error) {
+      console.error('❌ Failed to upload screenshots to cloud:', error.message);
+      console.warn('   Keeping original base64 screenshots');
+      return actions; // Return original actions on error
+    }
+  }
+
+  /**
    * Stop recording and close browser
+   * @param {Object} options - Options
+   * @param {boolean} options.uploadToCloudinary - Upload screenshots to cloud (default: true)
    * @returns {Promise<Array>} Final recorded actions
    */
-  async stopRecording() {
+  async stopRecording(options = {}) {
+    const { uploadToCloudinary = true } = options;
+    
     this.isRecording = false;
 
     // Clear periodic sync interval
@@ -696,17 +816,32 @@ export class ActionRecorder {
       this.syncInterval = null;
     }
 
+    // Clear upload queue interval
+    if (this.uploadQueueInterval) {
+      clearInterval(this.uploadQueueInterval);
+      this.uploadQueueInterval = null;
+    }
+
     // Get final actions (try live first, fallback to backup)
     const liveActions = await this.getRecordedActions();
     
     // Use backup if live retrieval failed or returned empty
     let finalActions = liveActions.length > 0 ? liveActions : (this.backupActions || []);
 
-    // Enrich with real Puppeteer screenshots before closing the browser
-    try {
-      finalActions = await this.enrichRecordedActionsWithPuppeteer(finalActions);
-    } catch (error) {
-      console.warn('⚠️ Failed to run Puppeteer enrichment pass:', error?.message || error);
+    // Wait for upload queue to finish (with timeout)
+    if (this.uploadQueue.length > 0 || this.isProcessingQueue) {
+      console.log(`⏳ Waiting for ${this.uploadQueue.length} upload(s) to complete...`);
+      await this.waitForUploadQueue(30000); // Wait up to 30 seconds
+    }
+
+    // Upload any remaining screenshots that weren't uploaded in background
+    if (uploadToCloudinary) {
+      try {
+        finalActions = await this.uploadScreenshotsToCloudinary(finalActions);
+      } catch (error) {
+        console.warn('⚠️ Failed to upload remaining screenshots:', error?.message || error);
+        // Continue with base64 screenshots if upload fails
+      }
     }
 
     this.recordedActions = finalActions;

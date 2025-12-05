@@ -1,17 +1,14 @@
 import puppeteer from 'puppeteer-core';
 import { findChrome } from '../../modules-agents/utils/browser.mjs';
-import { getPlatformConfig, usesMobileViewport } from '../config/platform.mjs';
 
 /**
  * Launch browser with platform-specific configuration
- * @param {string} platform - Platform name
+ * @param {Object} config - Platform configuration
  * @returns {Promise<Object>} Browser and page instances
  */
-export async function launchBrowser(platform) {
+export async function launchBrowser(config) {
   const executablePath = findChrome();
   console.log('🔍 Found Chrome at:', executablePath);
-
-  const config = getPlatformConfig(platform);
 
   // Launch browser in visible mode
   const browser = await puppeteer.launch({
@@ -30,8 +27,8 @@ export async function launchBrowser(platform) {
   const page = await browser.newPage();
 
   // Set viewport based on platform
-  if (usesMobileViewport(platform)) {
-    console.log('📱 Using mobile viewport for', platform);
+  if (config.useMobileViewport) {
+    console.log('📱 Using mobile viewport for', config.name);
     await page.emulate({
       name: 'iPhone 12',
       viewport: {
@@ -43,9 +40,6 @@ export async function launchBrowser(platform) {
       },
       userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 14_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0 Mobile/15E148 Safari/604.1',
     });
-  } else if (platform === 'twitter') {
-    console.log('🖥️  Using desktop viewport for', platform);
-    await page.setViewport({ width: 1280, height: 720 });
   } else {
     // Default to desktop viewport
     await page.setViewport({ width: 1280, height: 720 });

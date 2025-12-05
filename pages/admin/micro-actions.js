@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import * as AlertDialog from '@radix-ui/react-alert-dialog';
 import { getJson, postJson } from '@utils/api';
 import Modal from '@components/Modal';
 import MicroActionCard from '@components/admin/MicroActionCard';
@@ -31,6 +32,8 @@ export default function MicroActions() {
   const [editingAction, setEditingAction] = useState(null);
   const [importData, setImportData] = useState(null);
   const [error, setError] = useState(null);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [actionToDelete, setActionToDelete] = useState(null);
 
   // Debounced search
   useEffect(() => {
@@ -88,17 +91,24 @@ export default function MicroActions() {
   };
 
   // Handle delete
-  const handleDelete = async (action) => {
-    if (!confirm(`Are you sure you want to delete "${action.name}"?`)) {
-      return;
-    }
+  const handleDeleteClick = (action) => {
+    setActionToDelete(action);
+    setDeleteDialogOpen(true);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!actionToDelete) return;
 
     try {
-      await postJson(`/api/admin/micro-actions/${action.id}`, {}, 'DELETE');
+      await postJson(`/api/admin/micro-actions/${actionToDelete.id}`, {}, 'DELETE');
+      setDeleteDialogOpen(false);
+      setActionToDelete(null);
       fetchMicroActions();
     } catch (err) {
       console.error('Error deleting micro-action:', err);
       alert(err.message || 'Failed to delete micro-action');
+      setDeleteDialogOpen(false);
+      setActionToDelete(null);
     }
   };
 
@@ -468,7 +478,7 @@ export default function MicroActions() {
                 key={action.id}
                 action={action}
                 onEdit={handleEdit}
-                onDelete={handleDelete}
+                onDelete={handleDeleteClick}
               />
             ))}
           </div>
@@ -507,6 +517,36 @@ export default function MicroActions() {
             onClose={() => setImportData(null)}
           />
         </Modal>
+
+        {/* Delete Confirmation Dialog */}
+        <AlertDialog.Root open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+          <AlertDialog.Portal>
+            <AlertDialog.Overlay className="fixed inset-0 bg-black/50 z-50" />
+            <AlertDialog.Content className="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-white rounded-lg shadow-xl p-6 z-50 max-w-md w-full mx-4">
+              <AlertDialog.Title className="text-lg font-semibold text-gray-900 mb-2">
+                Delete Micro-Action
+              </AlertDialog.Title>
+              <AlertDialog.Description className="text-sm text-gray-600 mb-6">
+                Are you sure you want to delete "{actionToDelete?.name}"? This action cannot be undone.
+              </AlertDialog.Description>
+              <div className="flex justify-end gap-3">
+                <AlertDialog.Cancel asChild>
+                  <button className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition-colors">
+                    Cancel
+                  </button>
+                </AlertDialog.Cancel>
+                <AlertDialog.Action asChild>
+                  <button
+                    onClick={handleDeleteConfirm}
+                    className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-md hover:bg-red-700 transition-colors"
+                  >
+                    Delete
+                  </button>
+                </AlertDialog.Action>
+              </div>
+            </AlertDialog.Content>
+          </AlertDialog.Portal>
+        </AlertDialog.Root>
       </div>
     </div>
   );

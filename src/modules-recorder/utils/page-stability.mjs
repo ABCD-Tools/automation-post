@@ -1,4 +1,3 @@
-import { getPlatformConfig } from '../config/platform.mjs';
 
 /**
  * Wait for page stability (network idle + no DOM mutations)

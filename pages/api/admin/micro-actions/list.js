@@ -89,6 +89,9 @@ export default async function handler(req, res) {
     // Build query
     let query = supabase.from('micro_actions').select('*', { count: 'exact' });
 
+    // Filter out inactive items by default (only show active micro-actions)
+    query = query.eq('is_active', true);
+
     // Apply filters
     if (platform && platform !== 'all') {
       query = query.or(`platform.eq.${platform},platform.eq.all`);

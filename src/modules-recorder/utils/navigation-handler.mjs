@@ -1,4 +1,3 @@
-import { getPlatformConfig } from '../config/platform.mjs';
 
 /**
  * Navigation handler for managing page navigations and re-injections

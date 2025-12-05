@@ -211,6 +211,18 @@ export default async function handler(req, res) {
 
     const supabase = createSupabaseServiceRoleClient();
 
+    // Check if user exists in users table before setting created_by
+    // If user doesn't exist, set created_by to NULL to avoid foreign key constraint violation
+    const { data: userRows } = await supabase
+      .from('users')
+      .select('id')
+      .eq('id', user.id)
+      .limit(1);
+    
+    const userRow = userRows && userRows.length > 0 ? userRows[0] : null;
+
+    const createdBy = userRow ? user.id : null;
+
     const { data, error } = await supabase
       .from('micro_actions')
       .insert({
@@ -219,7 +231,7 @@ export default async function handler(req, res) {
         type,
         platform,
         params: optimizedParams, // Use optimized params
-        created_by: user.id,
+        created_by: createdBy,
         is_active: true,
         version: '1.0.0',
       })

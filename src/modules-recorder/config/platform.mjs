@@ -4,20 +4,28 @@
 
 export const PLATFORM_CONFIG = {
   instagram: {
+    name: 'instagram',
     protocolTimeout: 180000, // 3 minutes for heavy SPA
     navigationStabilityWait: 5000,
+    useMobileViewport: true,
   },
   facebook: {
+    name: 'facebook',
     protocolTimeout: 120000, // 2 minutes
     navigationStabilityWait: 3000,
+    useMobileViewport: true,
   },
   twitter: {
+    name: 'twitter',
     protocolTimeout: 60000, // 1 minute
     navigationStabilityWait: 2000,
+    useMobileViewport: false,
   },
   default: {
+    name: 'default',
     protocolTimeout: 60000, // 1 minute default
     navigationStabilityWait: 1000,
+    useMobileViewport: false,
   }
 };
 
@@ -28,14 +36,5 @@ export const PLATFORM_CONFIG = {
  */
 export function getPlatformConfig(platform) {
   return PLATFORM_CONFIG[platform] || PLATFORM_CONFIG.default;
-}
-
-/**
- * Check if platform uses mobile viewport
- * @param {string} platform - Platform name
- * @returns {boolean} True if mobile viewport should be used
- */
-export function usesMobileViewport(platform) {
-  return platform === 'instagram' || platform === 'facebook';
 }
 

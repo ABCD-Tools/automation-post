@@ -17,8 +17,8 @@ export default function Login() {
     try {
       await loginWithEmailPassword({ email, password });
       toast.success("Login successful.");
-      // TODO: Default redirect to admin micro-actions dashboard (for dashboard, after developer needs solved)
-      router.push('/admin/micro-actions');
+      // TODO: Default redirect to admin dashboard (for dashboard, after developer needs solved)
+      router.push('/admin');
 
     } catch (err) {
       toast.error(err.message || "Login failed");
