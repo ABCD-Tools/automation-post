@@ -87,6 +87,22 @@ export async function registerWithEmailPassword({ email, password }) {
   return postJson('/api/auth/register', { email, password });
 }
 
+/**
+ * Request password reset email
+ */
+export async function requestPasswordReset({ email }) {
+  return postJson('/api/auth/password-reset', { email });
+}
+
+/**
+ * Update password with reset token (for reset password page)
+ */
+export async function updatePasswordWithToken({ password, token }) {
+  // Note: Supabase handles password reset via magic links
+  // This function is for client-side password update after token verification
+  return postJson('/api/auth/password-reset/confirm', { password, token });
+}
+
 // Example non-auth helpers (extend as needed)
 export function fetchAccounts() {
   return getJson('/api/accounts/list');

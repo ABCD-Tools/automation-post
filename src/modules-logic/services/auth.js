@@ -18,6 +18,7 @@ const supabaseServerClient = createClient(supabaseUrl, supabaseAnonKey, {
 
 /**
  * Register a new user with email/password using Supabase Auth.
+ * Also creates a record in the users table.
  * Supabase sends the verification email automatically.
  */
 export async function registerWithEmail(email, password) {
@@ -25,6 +26,7 @@ export async function registerWithEmail(email, password) {
     ? `${process.env.NEXT_PUBLIC_SITE_URL}/login`
     : undefined;
 
+  // Register user in Supabase Auth
   const { data, error } = await supabaseServerClient.auth.signUp({
     email,
     password,
@@ -35,6 +37,34 @@ export async function registerWithEmail(email, password) {
 
   if (error) {
     throw error;
+  }
+
+  // If user was created successfully, also create record in users table
+  if (data.user) {
+    // Import service role client for database operations
+    const { createSupabaseServiceRoleClient } = await import('@modules-view/utils/supabase.js');
+    const supabaseService = createSupabaseServiceRoleClient();
+
+    // Create user record in users table
+    // Note: password_hash is required by schema, but password is stored in Supabase Auth
+    // Using a placeholder hash to satisfy the NOT NULL constraint
+    const { error: userError } = await supabaseService
+      .from('users')
+      .insert({
+        id: data.user.id,
+        email: data.user.email,
+        password_hash: 'auth_stored', // Placeholder - password is stored in Supabase Auth, not in users table
+        email_verified: data.user.email_confirmed_at !== null,
+        tier: 'free', // Default tier
+        created_at: data.user.created_at,
+        updated_at: new Date().toISOString(),
+      });
+
+    // If insert fails, log but don't fail registration (user is already in Auth)
+    if (userError) {
+      console.error('Failed to create user record in users table:', userError);
+      // Don't throw - user is registered in Auth, table record can be created later
+    }
   }
 
   return data;

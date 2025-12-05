@@ -50,3 +50,115 @@ export async function listPosts(userId, filters = {}) {
   };
 }
 
+/**
+ * Get a single post (job) by ID
+ * @param {string} userId - Supabase auth user ID
+ * @param {string} postId - Post ID (job ID)
+ * @returns {Promise<Object>} Post object
+ */
+export async function getPost(userId, postId) {
+  const { data: post, error } = await supabase
+    .from('jobs')
+    .select('*')
+    .eq('id', postId)
+    .eq('user_id', userId)
+    .eq('job_type', 'post')
+    .single();
+
+  if (error) {
+    if (error.code === 'PGRST116') {
+      throw new Error('Post not found');
+    }
+    throw new Error(`Failed to fetch post: ${error.message}`);
+  }
+
+  if (!post) {
+    throw new Error('Post not found or access denied');
+  }
+
+  return post;
+}
+
+/**
+ * Update a post (job)
+ * @param {string} userId - Supabase auth user ID
+ * @param {string} postId - Post ID (job ID)
+ * @param {Object} postData - Post data to update
+ * @returns {Promise<Object>} Updated post object
+ */
+export async function updatePost(userId, postId, postData) {
+  // Verify post belongs to user and is a post type
+  const { data: existingPost, error: checkError } = await supabase
+    .from('jobs')
+    .select('id, job_type')
+    .eq('id', postId)
+    .eq('user_id', userId)
+    .eq('job_type', 'post')
+    .single();
+
+  if (checkError || !existingPost) {
+    throw new Error('Post not found or access denied');
+  }
+
+  // Build update object
+  const updateData = {};
+  if (postData.status !== undefined) updateData.status = postData.status;
+  if (postData.content !== undefined) updateData.content = postData.content;
+  if (postData.target_accounts !== undefined) updateData.target_accounts = postData.target_accounts;
+  if (postData.expires_at !== undefined) updateData.expires_at = postData.expires_at;
+
+  if (Object.keys(updateData).length === 0) {
+    throw new Error('No valid fields to update');
+  }
+
+  const { data: post, error } = await supabase
+    .from('jobs')
+    .update(updateData)
+    .eq('id', postId)
+    .eq('user_id', userId)
+    .eq('job_type', 'post')
+    .select()
+    .single();
+
+  if (error) {
+    throw new Error(`Failed to update post: ${error.message}`);
+  }
+
+  return post;
+}
+
+/**
+ * Delete a post (job)
+ * @param {string} userId - Supabase auth user ID
+ * @param {string} postId - Post ID (job ID)
+ * @returns {Promise<Object>} Deletion confirmation
+ */
+export async function deletePost(userId, postId) {
+  // Verify post belongs to user and is a post type
+  const { data: existingPost, error: checkError } = await supabase
+    .from('jobs')
+    .select('id, job_type')
+    .eq('id', postId)
+    .eq('user_id', userId)
+    .eq('job_type', 'post')
+    .single();
+
+  if (checkError || !existingPost) {
+    throw new Error('Post not found or access denied');
+  }
+
+  // Hard delete the post
+  const { error } = await supabase
+    .from('jobs')
+    .delete()
+    .eq('id', postId)
+    .eq('user_id', userId)
+    .eq('job_type', 'post');
+
+  if (error) {
+    throw new Error(`Failed to delete post: ${error.message}`);
+  }
+
+  return { success: true, postId };
+}
+

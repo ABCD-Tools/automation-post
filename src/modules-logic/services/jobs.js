@@ -72,3 +72,39 @@ export async function cancelJob(userId, jobId) {
   return job;
 }
 
+/**
+ * Retry a failed job by creating a new job with the same parameters
+ * @param {string} userId - Supabase auth user ID
+ * @param {string} jobId - Job ID to retry
+ * @returns {Promise<Object>} New job object
+ */
+export async function retryJob(userId, jobId) {
+  // Get the original job
+  const originalJob = await getJob(userId, jobId);
+
+  // Only allow retrying failed or cancelled jobs
+  if (originalJob.status !== 'failed' && originalJob.status !== 'cancelled') {
+    throw new Error(`Cannot retry job with status: ${originalJob.status}. Only failed or cancelled jobs can be retried.`);
+  }
+
+  // Create a new job with the same parameters
+  const { data: newJob, error } = await supabase
+    .from('jobs')
+    .insert({
+      user_id: userId,
+      job_type: originalJob.job_type,
+      status: 'queued',
+      content: originalJob.content,
+      target_accounts: originalJob.target_accounts,
+      expires_at: originalJob.expires_at || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(), // 7 days default
+    })
+    .select()
+    .single();
+
+  if (error) {
+    throw new Error(`Failed to retry job: ${error.message}`);
+  }
+
+  return newJob;
+}
+

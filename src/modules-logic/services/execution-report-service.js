@@ -370,6 +370,86 @@ export class ExecutionReportService {
       return { success: false, error: error.message };
     }
   }
+
+  /**
+   * Retry a failed execution report by creating a new job
+   * @param {string} userId - User ID
+   * @param {string} reportId - Execution report ID
+   * @returns {Promise<Object>} New job object
+   */
+  async retryExecutionReport(userId, reportId) {
+    try {
+      // Get the execution report
+      const reportResult = await this.getExecutionReport(reportId);
+      
+      if (!reportResult.success || !reportResult.data) {
+        throw new Error('Execution report not found');
+      }
+
+      const report = reportResult.data;
+
+      // Verify the report belongs to the user
+      if (report.user_id !== userId) {
+        throw new Error('Access denied: Report does not belong to user');
+      }
+
+      // Only allow retrying failed reports
+      if (report.success_rate === 100 && report.error_count === 0) {
+        throw new Error('Cannot retry a successful execution report');
+      }
+
+      // Get the original job if it exists
+      let jobData = null;
+      if (report.job_id) {
+        const { data: job, error: jobError } = await this.supabase
+          .from('jobs')
+          .select('*')
+          .eq('id', report.job_id)
+          .single();
+
+        if (!jobError && job) {
+          jobData = job;
+        }
+      }
+
+      // Create a new job based on the original job or report data
+      const newJobData = {
+        user_id: userId,
+        job_type: jobData?.job_type || report.workflow_type || 'automation',
+        status: 'queued',
+        content: jobData?.content || {
+          workflow_id: report.workflow_id,
+          workflow_name: report.workflow_name,
+          platform: report.platform,
+          retry_from_report_id: reportId,
+        },
+        target_accounts: jobData?.target_accounts || [],
+        expires_at: jobData?.expires_at || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+      };
+
+      const { data: newJob, error: insertError } = await this.supabase
+        .from('jobs')
+        .insert([newJobData])
+        .select()
+        .single();
+
+      if (insertError) {
+        throw new Error(`Failed to create retry job: ${insertError.message}`);
+      }
+
+      return {
+        success: true,
+        data: {
+          job: newJob,
+          message: 'Job created for retry',
+        },
+      };
+
+    } catch (error) {
+      console.error('❌ Error retrying execution report:', error.message);
+      return { success: false, error: error.message };
+    }
+  }
 }
 
 export default ExecutionReportService;

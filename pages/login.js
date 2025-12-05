@@ -73,15 +73,23 @@ export default function Login() {
               <input type="checkbox" name="" id="" />
               Remember me
             </label>
-            <p className="text-xs flex items-center justify-start gap-2">
-              Dont have account?{" "}
+            <div className="flex flex-col items-end gap-1">
               <Link
-                href="/register"
-                className="text-blue-500 hover:text-blue-700 underline"
+                href="/forgot-password"
+                className="text-xs text-blue-500 hover:text-blue-700 underline"
               >
-                Register
+                Forgot Password?
               </Link>
-            </p>
+              <p className="text-xs flex items-center justify-start gap-2">
+                Dont have account?{" "}
+                <Link
+                  href="/register"
+                  className="text-blue-500 hover:text-blue-700 underline"
+                >
+                  Register
+                </Link>
+              </p>
+            </div>
           </div>
         </form>
       </main>

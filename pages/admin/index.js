@@ -201,7 +201,7 @@ export default function AdminDashboard() {
             {/* Navigation Cards */}
             <div className="mb-8">
               <h2 className="text-xl font-semibold text-gray-900 mb-4">Quick Actions</h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <NavigationCard
                   title="Micro-Actions"
                   description="Create and manage reusable browser automation actions"
@@ -215,6 +215,13 @@ export default function AdminDashboard() {
                   href="/admin/workflows"
                   icon="🔄"
                   color="green"
+                />
+                <NavigationCard
+                  title="Users"
+                  description="Manage platform users, tiers, and permissions"
+                  href="/admin/users"
+                  icon="👥"
+                  color="purple"
                 />
               </div>
             </div>
