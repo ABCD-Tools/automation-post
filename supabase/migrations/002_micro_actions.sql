@@ -22,7 +22,7 @@
 --   "text": "value",
 --   "duration": 1000
 -- }
-CREATE TABLE micro_actions (
+CREATE TABLE IF NOT EXISTS micro_actions (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   name VARCHAR(255) NOT NULL,
   description TEXT,
@@ -37,7 +37,7 @@ CREATE TABLE micro_actions (
 );
 
 -- Workflows Table (combines micro-actions)
-CREATE TABLE workflows (
+CREATE TABLE IF NOT EXISTS workflows (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   name VARCHAR(255) NOT NULL,
   description TEXT,
@@ -69,7 +69,7 @@ CREATE TABLE workflows (
 --   },
 --   "backup_selector": "css_selector_or_xpath"  -- Optional fallback
 -- }
-CREATE TABLE recording_sessions (
+CREATE TABLE IF NOT EXISTS recording_sessions (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   user_id UUID REFERENCES users(id) ON DELETE CASCADE,
   platform VARCHAR(50) NOT NULL,
@@ -81,9 +81,9 @@ CREATE TABLE recording_sessions (
 );
 
 -- Indexes
-CREATE INDEX idx_micro_actions_platform ON micro_actions(platform);
-CREATE INDEX idx_micro_actions_type ON micro_actions(type);
-CREATE INDEX idx_micro_actions_created_by ON micro_actions(created_by);
-CREATE INDEX idx_workflows_platform ON workflows(platform);
-CREATE INDEX idx_recording_sessions_user ON recording_sessions(user_id);
-CREATE INDEX idx_recording_sessions_status ON recording_sessions(status);
+CREATE INDEX IF NOT EXISTS idx_micro_actions_platform ON micro_actions(platform);
+CREATE INDEX IF NOT EXISTS idx_micro_actions_type ON micro_actions(type);
+CREATE INDEX IF NOT EXISTS idx_micro_actions_created_by ON micro_actions(created_by);
+CREATE INDEX IF NOT EXISTS idx_workflows_platform ON workflows(platform);
+CREATE INDEX IF NOT EXISTS idx_recording_sessions_user ON recording_sessions(user_id);
+CREATE INDEX IF NOT EXISTS idx_recording_sessions_status ON recording_sessions(status);

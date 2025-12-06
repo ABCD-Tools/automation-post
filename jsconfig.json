@@ -7,7 +7,8 @@
       "@modules-logic/*": ["src/modules-logic/*"],
       "@modules-agents/*": ["src/modules-agents/*"],
       "@modules-view/*": ["src/modules-view/*"],
-      "@modules-recorder/*": ["src/modules-recorder/*"]
+      "@modules-recorder/*": ["src/modules-recorder/*"],
+      "@modules-installer/*": ["src/modules-installer/*"]
     }
   },
   "exclude": ["node_modules", ".next"]

@@ -1,5 +1,5 @@
 {
-  "name": "post-automation-platform",
+  "name": "abcd-tools-platform",
   "version": "1.0.0",
   "description": "Visual action recorder for social media automation. Uses visual/coordinate-based recording instead of fragile DOM selectors.",
   "_comment_visual_recording_dependencies": "Visual recording requires these packages: html2canvas (element screenshots), pixelmatch (image comparison), tesseract.js (OCR fallback, ~2MB, optional for MVP), jimp (image processing), fuse.js (fuzzy text matching). For MVP, start with html2canvas + pixelmatch. Keep puppeteer-core (not full puppeteer) for browser automation.",
@@ -8,20 +8,13 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint . --ext js,jsx,ts,tsx",
-    "build:client": "node src/modules-installer/builder.js",
     "migrate": "node scripts/migration.mjs",
     "migrate:fresh": "node scripts/migration.mjs --fresh",
     "seed": "node scripts/seeder.mjs",
     "record": "node tools/record.mjs",
-    "test:record": "node tools/test-recorder.js",
-    "test:recording": "node tools/test-visual-recording.mjs",
-    "test:execution": "node tools/test-visual-execution.mjs",
-    "test:failure-scenarios": "node tools/test-failure-scenarios.mjs",
-    "bypass-powershell": "Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass",
-    "test": "./tests/run-all-tests.sh",
-    "test:integration": "node tests/integration.test.js",
-    "test:edge-cases": "node tests/edge-cases.test.js",
-    "test:visual": "node src/modules-client/visual-executor.test.js"
+    "client:package": "node src/modules-installer/package.mjs",
+    "client:build": "node src/modules-installer/builder.mjs",
+    "bypass-powershell": "Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass"
   },
   "dependencies": {
     "@radix-ui/react-alert-dialog": "^1.1.15",
@@ -33,6 +26,7 @@
     "crypto-js": "^4.2.0",
     "date-fns": "^2.30.0",
     "dotenv": "^17.2.3",
+    "form-data": "^4.0.5",
     "fuse.js": "^7.0.0",
     "gsap": "^3.13.0",
     "html2canvas": "^1.4.1",
@@ -58,6 +52,7 @@
     "autoprefixer": "^10.4.0",
     "eslint": "^9.14.0",
     "eslint-config-next": "^15.0.3",
+    "pkg": "^5.8.1",
     "postcss": "^8.4.0",
     "tailwindcss": "^3.3.0"
   },

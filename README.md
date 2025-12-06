@@ -1,4 +1,4 @@
-# Post Automation Platform
+# ABCD Tools Platform
 
 A Next.js application for automating social media posts with **visual action recording** - a robust approach that captures what users see instead of fragile DOM selectors.
 

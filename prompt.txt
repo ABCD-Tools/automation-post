@@ -1,0 +1,126 @@
+# TODO: Complete modules-client and modules-agents Dependencies
+
+## Status: In Progress
+## Priority: High
+## Issue: Missing dependencies causing ERR_MODULE_NOT_FOUND errors
+
+---
+
+## Missing Dependencies
+
+### Critical (Required for Basic Functionality)
+- [ ] **axios** - HTTP client used in `modules-client/poller.js`
+  - Used for: API polling, heartbeats, job status updates, client registration
+  - Current status: ❌ Missing from package.json
+  - Fix: Add `"axios": "^1.6.0"` to dependencies
+  - Impact: Agent cannot communicate with API without this
+
+### Optional (May be needed)
+- [ ] **crypto-js** - Already in package.json but verify usage
+  - Check if actually used in modules-client
+  - Status: ⚠️ Not found in grep search - likely unused
+  - Action: Remove if not used to reduce bundle size
+
+- [ ] **uuid** - Already in package.json but verify usage
+  - Check if actually used in modules-client
+  - Status: ⚠️ Not found in grep search - likely unused
+  - Action: Remove if not used to reduce bundle size
+
+---
+
+## Current package.json Dependencies (developer-zip-builder.mjs)
+
+```json
+{
+  "dependencies": {
+    "puppeteer-core": "^24.31.0",  // ✓ Used in agent.js, visual-executor files
+    "dotenv": "^17.2.3",            // ✓ Used in config.js
+    "crypto-js": "^4.2.0",          // Used to encrypt and decrypt the AES right?
+    "uuid": "^9.0.0",               // Used to encrypt and decrypt the AES right?
+    "pixelmatch": "^5.3.0",         // ✓ Used in visual-executor.js
+    "pngjs": "^7.0.0",              // ✓ Used in visual-executor.js
+    "jimp": "^0.22.10"              // ✓ Used in visual-executor.js
+  }
+}
+```
+
+---
+
+## Files That Import Dependencies
+
+### modules-client/
+- **poller.js** - imports `axios` ❌ MISSING
+- **agent.js** - imports `puppeteer-core` ✓
+- **config.js** - imports `dotenv` ✓
+- **visual-executor.js** - imports `pixelmatch`, `pngjs`, `jimp` ✓
+- **workflow-executor.js** - imports from local files only ✓
+- **workflow-storage.js** - imports from local files only ✓
+- **logger.js** - uses Node.js built-ins only ✓
+
+### modules-agents/
+- **utils/browser.mjs** - uses Node.js built-ins only ✓
+- **base/BaseAgent.js** - check for dependencies
+- **platforms/** - check for dependencies
+
+---
+
+## Action Items
+
+### Immediate (Fix Runtime Errors)
+1. [ ] Add `axios` to package.json dependencies in `developer-zip-builder.mjs`
+   - File: `src/modules-installer/developer-zip-builder.mjs`
+   - Line: ~223-231 (dependencies object)
+   - Add: `"axios": "^1.6.0"`
+   - Priority: 🔴 CRITICAL - Agent cannot run without this
+
+### Cleanup Tasks (Reduce Bundle Size)
+2. [ ] Remove `crypto-js` from package.json dependencies
+   - Status: ✅ Verified - Not used in modules-client
+   - Action: Remove from dependencies object
+   - Benefit: Reduces ZIP size
+
+3. [ ] Remove `uuid` from package.json dependencies
+   - Status: ✅ Verified - Not used in modules-client
+   - Action: Remove from dependencies object
+   - Benefit: Reduces ZIP size
+
+4. [ ] Check modules-agents for any missing dependencies
+   - Review: `base/BaseAgent.js`
+   - Review: `platforms/InstagramAgent.js`
+   - Review: `platforms/FacebookAgent.js`
+   - Review: `platforms/TwitterAgent.js`
+   - Review: `utils/stealth.js`
+   - Review: `utils/human-behavior.js`
+
+### Testing
+5. [ ] Test developer ZIP installation
+   - Run `setup.bat` - verify Node.js and pnpm download
+   - Run `download_deps.bat` - verify all dependencies install
+   - Run `start_agent.bat` - verify no missing module errors
+
+6. [ ] Verify all imports resolve correctly
+   - Check for any other `ERR_MODULE_NOT_FOUND` errors
+   - Test agent startup and API connectivity
+
+---
+
+## Notes
+
+- The error log shows `axios` is missing when trying to run the agent
+- All dependencies should be listed in package.json before `download_deps.bat` runs
+- Consider using `pnpm install` with `--frozen-lockfile` for reproducible builds
+- May want to add a dependency check script to validate all imports before building ZIP
+
+---
+
+## Files to Modify
+
+1. `src/modules-installer/developer-zip-builder.mjs`
+   - Update package.json dependencies (add axios)
+   - Verify all required dependencies are included
+
+---
+
+**Last Updated:** 2025-01-27
+**Next Step:** Add axios to package.json dependencies
+

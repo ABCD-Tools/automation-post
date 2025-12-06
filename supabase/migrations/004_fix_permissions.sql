@@ -26,47 +26,97 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE micro_actions TO authenticated;
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO authenticated;
 
 -- Enable Row Level Security
-ALTER TABLE micro_actions ENABLE ROW LEVEL SECURITY;
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_tables 
+        WHERE schemaname = 'public' 
+        AND tablename = 'micro_actions'
+        AND rowsecurity = true
+    ) THEN
+        ALTER TABLE micro_actions ENABLE ROW LEVEL SECURITY;
+    END IF;
+END $$;
 
 -- Policy: All authenticated users can view all micro_actions
-CREATE POLICY "Users can view all micro_actions"
-ON micro_actions
-FOR SELECT
-TO authenticated
-USING (true);
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_policies 
+        WHERE schemaname = 'public' 
+        AND tablename = 'micro_actions'
+        AND policyname = 'Users can view all micro_actions'
+    ) THEN
+        CREATE POLICY "Users can view all micro_actions"
+        ON micro_actions
+        FOR SELECT
+        TO authenticated
+        USING (true);
+    END IF;
+END $$;
 
 -- REMOVED MVP POLICY: "Authenticated users can manage micro_actions"
 
 -- Alternative (for production): Restrict to premium users only
 -- Policy: Premium users can insert micro_actions
-CREATE POLICY "Premium users can insert micro_actions"
-ON micro_actions
-FOR INSERT
-TO authenticated
-WITH CHECK (
-    auth.uid() IN (SELECT id FROM users WHERE tier = 'premium')
-);
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_policies 
+        WHERE schemaname = 'public' 
+        AND tablename = 'micro_actions'
+        AND policyname = 'Premium users can insert micro_actions'
+    ) THEN
+        CREATE POLICY "Premium users can insert micro_actions"
+        ON micro_actions
+        FOR INSERT
+        TO authenticated
+        WITH CHECK (
+            auth.uid() IN (SELECT id FROM users WHERE tier = 'premium')
+        );
+    END IF;
+END $$;
 
 -- Policy: Premium users can update micro_actions
-CREATE POLICY "Premium users can update micro_actions"
-ON micro_actions
-FOR UPDATE
-TO authenticated
-USING (
-    auth.uid() IN (SELECT id FROM users WHERE tier = 'premium')
-)
-WITH CHECK (
-    auth.uid() IN (SELECT id FROM users WHERE tier = 'premium')
-);
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_policies 
+        WHERE schemaname = 'public' 
+        AND tablename = 'micro_actions'
+        AND policyname = 'Premium users can update micro_actions'
+    ) THEN
+        CREATE POLICY "Premium users can update micro_actions"
+        ON micro_actions
+        FOR UPDATE
+        TO authenticated
+        USING (
+            auth.uid() IN (SELECT id FROM users WHERE tier = 'premium')
+        )
+        WITH CHECK (
+            auth.uid() IN (SELECT id FROM users WHERE tier = 'premium')
+        );
+    END IF;
+END $$;
 
 -- Policy: Premium users can delete micro_actions
-CREATE POLICY "Premium users can delete micro_actions"
-ON micro_actions
-FOR DELETE
-TO authenticated
-USING (
-    auth.uid() IN (SELECT id FROM users WHERE tier = 'premium')
-);
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_policies 
+        WHERE schemaname = 'public' 
+        AND tablename = 'micro_actions'
+        AND policyname = 'Premium users can delete micro_actions'
+    ) THEN
+        CREATE POLICY "Premium users can delete micro_actions"
+        ON micro_actions
+        FOR DELETE
+        TO authenticated
+        USING (
+            auth.uid() IN (SELECT id FROM users WHERE tier = 'premium')
+        );
+    END IF;
+END $$;
 
 -- ============================================================================
 -- WORKFLOWS TABLE PERMISSIONS
@@ -76,22 +126,52 @@ USING (
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE workflows TO authenticated;
 
 -- Enable Row Level Security
-ALTER TABLE workflows ENABLE ROW LEVEL SECURITY;
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_tables 
+        WHERE schemaname = 'public' 
+        AND tablename = 'workflows'
+        AND rowsecurity = true
+    ) THEN
+        ALTER TABLE workflows ENABLE ROW LEVEL SECURITY;
+    END IF;
+END $$;
 
 -- Policy: All authenticated users can view all workflows
-CREATE POLICY "Users can view all workflows"
-ON workflows
-FOR SELECT
-TO authenticated
-USING (true);
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_policies 
+        WHERE schemaname = 'public' 
+        AND tablename = 'workflows'
+        AND policyname = 'Users can view all workflows'
+    ) THEN
+        CREATE POLICY "Users can view all workflows"
+        ON workflows
+        FOR SELECT
+        TO authenticated
+        USING (true);
+    END IF;
+END $$;
 
 -- Policy: Authenticated users can manage workflows (MVP - can restrict later)
-CREATE POLICY "Authenticated users can manage workflows"
-ON workflows
-FOR ALL
-TO authenticated
-USING (true)
-WITH CHECK (true);
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_policies 
+        WHERE schemaname = 'public' 
+        AND tablename = 'workflows'
+        AND policyname = 'Authenticated users can manage workflows'
+    ) THEN
+        CREATE POLICY "Authenticated users can manage workflows"
+        ON workflows
+        FOR ALL
+        TO authenticated
+        USING (true)
+        WITH CHECK (true);
+    END IF;
+END $$;
 
 -- ============================================================================
 -- RECORDING_SESSIONS TABLE PERMISSIONS
@@ -101,36 +181,86 @@ WITH CHECK (true);
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE recording_sessions TO authenticated;
 
 -- Enable Row Level Security
-ALTER TABLE recording_sessions ENABLE ROW LEVEL SECURITY;
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_tables 
+        WHERE schemaname = 'public' 
+        AND tablename = 'recording_sessions'
+        AND rowsecurity = true
+    ) THEN
+        ALTER TABLE recording_sessions ENABLE ROW LEVEL SECURITY;
+    END IF;
+END $$;
 
 -- Policy: Users can only see their own recording sessions
-CREATE POLICY "Users can view their own recording sessions"
-ON recording_sessions
-FOR SELECT
-TO authenticated
-USING (auth.uid() = user_id);
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_policies 
+        WHERE schemaname = 'public' 
+        AND tablename = 'recording_sessions'
+        AND policyname = 'Users can view their own recording sessions'
+    ) THEN
+        CREATE POLICY "Users can view their own recording sessions"
+        ON recording_sessions
+        FOR SELECT
+        TO authenticated
+        USING (auth.uid() = user_id);
+    END IF;
+END $$;
 
 -- Policy: Users can insert their own recording sessions
-CREATE POLICY "Users can insert their own recording sessions"
-ON recording_sessions
-FOR INSERT
-TO authenticated
-WITH CHECK (auth.uid() = user_id);
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_policies 
+        WHERE schemaname = 'public' 
+        AND tablename = 'recording_sessions'
+        AND policyname = 'Users can insert their own recording sessions'
+    ) THEN
+        CREATE POLICY "Users can insert their own recording sessions"
+        ON recording_sessions
+        FOR INSERT
+        TO authenticated
+        WITH CHECK (auth.uid() = user_id);
+    END IF;
+END $$;
 
 -- Policy: Users can update their own recording sessions
-CREATE POLICY "Users can update their own recording sessions"
-ON recording_sessions
-FOR UPDATE
-TO authenticated
-USING (auth.uid() = user_id)
-WITH CHECK (auth.uid() = user_id);
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_policies 
+        WHERE schemaname = 'public' 
+        AND tablename = 'recording_sessions'
+        AND policyname = 'Users can update their own recording sessions'
+    ) THEN
+        CREATE POLICY "Users can update their own recording sessions"
+        ON recording_sessions
+        FOR UPDATE
+        TO authenticated
+        USING (auth.uid() = user_id)
+        WITH CHECK (auth.uid() = user_id);
+    END IF;
+END $$;
 
 -- Policy: Users can delete their own recording sessions
-CREATE POLICY "Users can delete their own recording sessions"
-ON recording_sessions
-FOR DELETE
-TO authenticated
-USING (auth.uid() = user_id);
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_policies 
+        WHERE schemaname = 'public' 
+        AND tablename = 'recording_sessions'
+        AND policyname = 'Users can delete their own recording sessions'
+    ) THEN
+        CREATE POLICY "Users can delete their own recording sessions"
+        ON recording_sessions
+        FOR DELETE
+        TO authenticated
+        USING (auth.uid() = user_id);
+    END IF;
+END $$;
 
 -- ============================================================================
 -- COMMENTS

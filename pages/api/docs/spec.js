@@ -5,9 +5,9 @@ const options = {
   definition: {
     openapi: '3.0.0',
     info: {
-      title: 'Post Automation Platform API',
+      title: 'ABCD Tools Platform API',
       version: '1.0.0',
-      description: 'API documentation for the Post Automation Platform - A web-based platform for automating social media posts',
+      description: 'API documentation for the ABCD Tools Platform - A web-based platform for automating social media posts',
       contact: {
         name: 'API Support',
       },

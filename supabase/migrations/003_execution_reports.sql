@@ -131,19 +131,49 @@ grant select on public.execution_errors_analysis to authenticated;
 grant select on public.method_performance_analysis to authenticated;
 
 -- Row Level Security (RLS) policies
-alter table public.execution_reports enable row level security;
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_tables 
+        WHERE schemaname = 'public' 
+        AND tablename = 'execution_reports'
+        AND rowsecurity = true
+    ) THEN
+        ALTER TABLE public.execution_reports ENABLE ROW LEVEL SECURITY;
+    END IF;
+END $$;
 
 -- Users can only see their own execution reports
-create policy "Users can view their own execution reports"
-    on public.execution_reports
-    for select
-    using (auth.uid() = user_id);
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_policies 
+        WHERE schemaname = 'public' 
+        AND tablename = 'execution_reports'
+        AND policyname = 'Users can view their own execution reports'
+    ) THEN
+        CREATE POLICY "Users can view their own execution reports"
+            ON public.execution_reports
+            FOR SELECT
+            USING (auth.uid() = user_id);
+    END IF;
+END $$;
 
 -- Users can insert their own execution reports
-create policy "Users can insert their own execution reports"
-    on public.execution_reports
-    for insert
-    with check (auth.uid() = user_id);
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_policies 
+        WHERE schemaname = 'public' 
+        AND tablename = 'execution_reports'
+        AND policyname = 'Users can insert their own execution reports'
+    ) THEN
+        CREATE POLICY "Users can insert their own execution reports"
+            ON public.execution_reports
+            FOR INSERT
+            WITH CHECK (auth.uid() = user_id);
+    END IF;
+END $$;
 
 -- Comment on table
 comment on table public.execution_reports is 'Stores detailed execution reports for workflow runs with method statistics, timing, and error details';
