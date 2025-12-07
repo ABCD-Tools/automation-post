@@ -393,35 +393,20 @@ async function executeJob(job) {
         
         // MVP: Use password directly from database (stored as plain text)
         if (account.encrypted_password) {
-          logger.info(`   Using password from account (plain text for MVP)`);
-          const decryptedPassword = account.encrypted_password; // Password is stored as plain text
+          try {
+            logger.info(`   Using password from account (plain text for MVP)`);
+            const decryptedPassword = account.encrypted_password; // Password is stored as plain text
             
             templateVariables.password = decryptedPassword;
-            logger.info(`   Password decrypted successfully (length: ${decryptedPassword.length} chars)`);
-          } catch (decryptError) {
-            logger.error(`   Failed to decrypt password: ${decryptError.message}`);
-            
-            // Log additional debugging information
+            logger.info(`   Password retrieved successfully (length: ${decryptedPassword.length} chars)`);
+          } catch (error) {
+            logger.error(`   Failed to retrieve password: ${error.message}`);
             logger.error(`   Debugging information:`);
             logger.error(`      Account ID: ${account.id}`);
             logger.error(`      Account username: ${account.username}`);
             logger.error(`      Account platform: ${account.platform}`);
             logger.error(`      Has encrypted_password: ${!!account.encrypted_password}`);
-            if (account.encrypted_password) {
-              logger.error(`      Encrypted password preview: ${account.encrypted_password.substring(0, 20)}... (first 20 chars)`);
-            }
-            logger.error(`      Has DECRYPTION_KEY: ${!!config.decryptionKey}`);
-            if (config.decryptionKey) {
-              logger.error(`      DECRYPTION_KEY preview: ${config.decryptionKey.substring(0, 10)}... (first 10 chars)`);
-            }
-            
-            // Check if this might be a key mismatch issue
-            logger.error(`   Troubleshooting:`);
-            logger.error(`      - Verify the DECRYPTION_KEY in .env matches the ENCRYPTION_KEY used when creating the account`);
-            logger.error(`      - Check if the account was encrypted with a different client's key`);
-            logger.error(`      - Try updating the account's client_id to match the current client`);
-            
-            throw new Error(`Password decryption failed: ${decryptError.message}`);
+            throw new Error(`Password retrieval failed: ${error.message}`);
           }
         } else {
           logger.warn(`   Account has no encrypted_password field`);
