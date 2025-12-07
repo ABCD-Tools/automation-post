@@ -282,3 +282,61 @@ export async function registerClient() {
     return null;
   }
 }
+
+/**
+ * Fetch account data by account ID (including encrypted password)
+ * @param {string} accountId - Account ID
+ * @returns {Promise<Object|null>} Account object with encrypted_password, or null if not found
+ */
+export async function fetchAccountById(accountId) {
+  if (!accountId) {
+    logger.warn('No account ID provided for account fetch');
+    return null;
+  }
+
+  const url = `${config.apiUrl}/accounts`;
+  const headers = getApiHeaders();
+  
+  logger.debug(`[HTTP] GET ${url} (fetching account: ${accountId})`);
+  
+  try {
+    const response = await axios.get(url, { headers });
+    
+    logger.debug(`[HTTP] GET ${url} → ${response.status} ${response.statusText}`);
+    
+    // Handle different response formats
+    let accounts = [];
+    if (Array.isArray(response.data)) {
+      // Direct array response
+      accounts = response.data;
+    } else if (response.data?.accounts && Array.isArray(response.data.accounts)) {
+      // Object with accounts property
+      accounts = response.data.accounts;
+    } else if (response.data?.id === accountId) {
+      // Single account response
+      return response.data;
+    } else {
+      logger.warn(`   Unexpected response format for account fetch`);
+      return null;
+    }
+    
+    // Find account by ID
+    const account = accounts.find(acc => acc.id === accountId);
+    if (account) {
+      logger.debug(`   Found account: ${account.username} (${account.platform})`);
+      return account;
+    } else {
+      logger.warn(`   Account ${accountId} not found in accounts list`);
+      return null;
+    }
+  } catch (error) {
+    if (error.response) {
+      logger.error(`[HTTP] GET ${url} → ${error.response.status} ${error.response.statusText}`);
+      logger.error(`[HTTP] Error response:`, error.response.data);
+    } else {
+      logger.error(`[HTTP] GET ${url} → Request error:`, error.message);
+    }
+    logger.error(`Failed to fetch account ${accountId}:`, error.message);
+    return null;
+  }
+}

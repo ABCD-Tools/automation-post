@@ -11,7 +11,8 @@
 
 import { config, validateConfig } from './config.js';
 import { logger } from './logger.js';
-import { pollPendingJobs, sendHeartbeat, updateJobStatus, registerClient, pingApi, checkClientRegistration } from './poller.js';
+import { pollPendingJobs, sendHeartbeat, updateJobStatus, registerClient, pingApi, checkClientRegistration, fetchAccountById } from './poller.js';
+import { decryptAccountPassword } from './encryption.js';
 import { WorkflowExecutor } from './workflow-executor.js';
 import puppeteer from 'puppeteer-core';
 import { PLATFORM_CONFIG } from '../modules-agents/platforms/platform.js';
@@ -312,6 +313,72 @@ async function executeJob(job) {
     if (!workflow.actions || !Array.isArray(workflow.actions) || workflow.actions.length === 0) {
       logger.error(`Job ${job.id} workflow has no valid actions array`);
       throw new Error('Invalid workflow in job content: actions array is missing or empty');
+    }
+    
+    // Prepare template variables (username, password, etc.)
+    const templateVariables = {};
+    
+    // Extract account information from job content
+    const accountId = job.content?.account_id;
+    const usernameFromJob = job.content?.username;
+    
+    if (accountId) {
+      logger.info(`Fetching account data for account_id: ${accountId}`);
+      
+      // Fetch account data including encrypted password
+      const account = await fetchAccountById(accountId);
+      
+      if (account) {
+        // Use username from account or from job content
+        const username = account.username || usernameFromJob;
+        
+        if (username) {
+          templateVariables.username = username;
+          logger.info(`   Username: ${username}`);
+        }
+        
+        // Decrypt password if available
+        if (account.encrypted_password) {
+          try {
+            logger.info(`   Decrypting password...`);
+            
+            if (!config.decryptionKey) {
+              throw new Error('DECRYPTION_KEY is not configured. Cannot decrypt password.');
+            }
+            
+            const decryptedPassword = await decryptAccountPassword(
+              account.encrypted_password,
+              config.decryptionKey
+            );
+            
+            templateVariables.password = decryptedPassword;
+            logger.info(`   Password decrypted successfully (length: ${decryptedPassword.length} chars)`);
+          } catch (decryptError) {
+            logger.error(`   Failed to decrypt password: ${decryptError.message}`);
+            logger.error(`   Decryption error details:`, decryptError);
+            throw new Error(`Password decryption failed: ${decryptError.message}`);
+          }
+        } else {
+          logger.warn(`   Account has no encrypted_password field`);
+        }
+      } else {
+        logger.warn(`   Account ${accountId} not found. Will use username from job content only.`);
+        if (usernameFromJob) {
+          templateVariables.username = usernameFromJob;
+        }
+      }
+    } else if (usernameFromJob) {
+      // No account_id, but username is in job content
+      logger.info(`Using username from job content: ${usernameFromJob}`);
+      templateVariables.username = usernameFromJob;
+    }
+    
+    // Set template variables in executor
+    if (Object.keys(templateVariables).length > 0) {
+      logger.info(`Setting template variables: ${Object.keys(templateVariables).join(', ')}`);
+      executor.setVariables(templateVariables);
+    } else {
+      logger.warn(`No template variables available. Workflow may use literal {{username}} and {{password}} values.`);
     }
     
     // Execute workflow
