@@ -1,126 +1,208 @@
-# TODO: Complete modules-client and modules-agents Dependencies
+# Fixing Vercel Serverless Directory Creation Error
 
-## Status: In Progress
-## Priority: High
-## Issue: Missing dependencies causing ERR_MODULE_NOT_FOUND errors
+## 🚨 The Problem
 
----
+**Error:** `ENOENT: no such file or directory, mkdir '/vercel'`
 
-## Missing Dependencies
+**Why it happens:** Vercel serverless functions have a **read-only filesystem** except for the `/tmp` directory. Any attempt to create directories outside `/tmp` will fail.
 
-### Critical (Required for Basic Functionality)
-- [ ] **axios** - HTTP client used in `modules-client/poller.js`
-  - Used for: API polling, heartbeats, job status updates, client registration
-  - Current status: ❌ Missing from package.json
-  - Fix: Add `"axios": "^1.6.0"` to dependencies
-  - Impact: Agent cannot communicate with API without this
+## 🔍 Root Cause
 
-### Optional (May be needed)
-- [ ] **crypto-js** - Already in package.json but verify usage
-  - Check if actually used in modules-client
-  - Status: ⚠️ Not found in grep search - likely unused
-  - Action: Remove if not used to reduce bundle size
-
-- [ ] **uuid** - Already in package.json but verify usage
-  - Check if actually used in modules-client
-  - Status: ⚠️ Not found in grep search - likely unused
-  - Action: Remove if not used to reduce bundle size
+Build functions using relative paths like `path.join(__dirname, '../../.temp/...')` resolve to paths outside the writable `/tmp` directory in Vercel's serverless environment.
 
 ---
 
-## Current package.json Dependencies (developer-zip-builder.mjs)
+## ✅ Solution 1: Use /tmp Directory (RECOMMENDED)
 
-```json
-{
-  "dependencies": {
-    "puppeteer-core": "^24.31.0",  // ✓ Used in agent.js, visual-executor files
-    "dotenv": "^17.2.3",            // ✓ Used in config.js
-    "crypto-js": "^4.2.0",          // Used to encrypt and decrypt the AES right?
-    "uuid": "^9.0.0",               // Used to encrypt and decrypt the AES right?
-    "pixelmatch": "^5.3.0",         // ✓ Used in visual-executor.js
-    "pngjs": "^7.0.0",              // ✓ Used in visual-executor.js
-    "jimp": "^0.22.10"              // ✓ Used in visual-executor.js
+Modify build functions to use `/tmp` as the base directory for all temporary file operations.
+
+### Files to Update:
+
+**`src/modules-installer/developer-zip-builder.mjs` (line 197):**
+```javascript
+// ❌ BEFORE
+const buildDir = path.join(__dirname, '../../.temp/developer-zip-build');
+
+// ✅ AFTER
+const buildDir = path.join(process.env.TMPDIR || '/tmp', 'developer-zip-build');
+```
+
+**`src/modules-installer/builder.mjs` (line 46):**
+```javascript
+// ❌ BEFORE
+const buildDir = path.join(__dirname, '../../.temp/installer-build');
+
+// ✅ AFTER
+const buildDir = path.join(process.env.TMPDIR || '/tmp', 'installer-build');
+```
+
+**`src/modules-installer/installer-builder.mjs` (line 32):**
+```javascript
+// ❌ BEFORE
+const buildDir = path.join(__dirname, '../../.temp/installer-exe-build');
+
+// ✅ AFTER
+const buildDir = path.join(process.env.TMPDIR || '/tmp', 'installer-exe-build');
+```
+
+### Benefits:
+- ✅ Works in all serverless environments (Vercel, AWS Lambda, etc.)
+- ✅ Uses the only writable directory available
+- ✅ No filesystem permission issues
+
+---
+
+## 🌐 Solution 2: Use os.tmpdir() for Cross-Platform Compatibility
+
+Use Node.js's built-in `os.tmpdir()` which automatically returns the correct temporary directory.
+
+```javascript
+import os from 'os';
+import path from 'path';
+
+const buildDir = path.join(os.tmpdir(), 'developer-zip-build');
+```
+
+### Benefits:
+- ✅ Works on all platforms (Windows, Linux, macOS)
+- ✅ Automatically uses the correct temp directory
+- ✅ More portable code
+
+---
+
+## 🔧 Solution 3: Add Environment Detection
+
+Detect if running in Vercel/serverless and use appropriate directory.
+
+```javascript
+import os from 'os';
+
+function getTempDir() {
+  // Check if running in Vercel
+  if (process.env.VERCEL || process.env.VERCEL_ENV) {
+    return '/tmp';
+  }
+  // Check if TMPDIR is set (common in serverless)
+  if (process.env.TMPDIR) {
+    return process.env.TMPDIR;
+  }
+  // Fall back to os.tmpdir() for local development
+  return os.tmpdir();
+}
+
+const buildDir = path.join(getTempDir(), 'developer-zip-build');
+```
+
+### Benefits:
+- ✅ Explicit handling of different environments
+- ✅ Works in both local development and production
+- ✅ Clear intent in code
+
+---
+
+## 🎯 Solution 4: Use Unique Subdirectories to Avoid Conflicts
+
+Since `/tmp` is shared, use unique subdirectories per request to prevent conflicts.
+
+```javascript
+import { v4 as uuidv4 } from 'uuid';
+import os from 'os';
+import path from 'path';
+
+const tempBase = process.env.TMPDIR || os.tmpdir();
+const uniqueId = uuidv4();
+const buildDir = path.join(tempBase, `abcd-tools-build-${uniqueId}`);
+```
+
+### Benefits:
+- ✅ Prevents file conflicts between concurrent requests
+- ✅ Easier cleanup (can identify your files)
+- ✅ More robust in multi-tenant environments
+
+---
+
+## 🏆 RECOMMENDED: Combined Implementation
+
+Combine Solutions 2 and 4 for the best result:
+
+```javascript
+import os from 'os';
+import { v4 as uuidv4 } from 'uuid';
+import path from 'path';
+
+function getBuildDir(prefix = 'build') {
+  const tempBase = process.env.TMPDIR || os.tmpdir();
+  const uniqueId = uuidv4();
+  return path.join(tempBase, `abcd-tools-${prefix}-${uniqueId}`);
+}
+
+// Usage:
+const buildDir = getBuildDir('developer-zip');
+await fs.mkdir(buildDir, { recursive: true });
+```
+
+### This ensures:
+- ✅ Works in Vercel serverless environment
+- ✅ Works in local development
+- ✅ Prevents file conflicts
+- ✅ Cross-platform compatible
+- ✅ Easy to identify and clean up
+
+---
+
+## ⚠️ Additional Considerations
+
+### 1. Cleanup
+Always clean up temporary files after use to avoid filling up `/tmp`:
+
+```javascript
+try {
+  // Your build operations
+  await buildFiles(buildDir);
+} finally {
+  // Cleanup
+  await fs.rm(buildDir, { recursive: true, force: true });
+}
+```
+
+### 2. File Size Limits
+Vercel has limits on `/tmp` usage:
+- Monitor file sizes
+- Consider streaming large files instead of storing them
+
+### 3. Concurrent Requests
+Multiple requests may run simultaneously:
+- Use unique directory names per request (Solution 4)
+- Avoid shared state in `/tmp`
+
+### 4. Error Handling
+Wrap mkdir calls in try-catch:
+
+```javascript
+try {
+  await fs.mkdir(buildDir, { recursive: true });
+} catch (error) {
+  if (error.code !== 'EEXIST') {
+    throw error;
   }
 }
 ```
 
 ---
 
-## Files That Import Dependencies
+## 📋 Quick Implementation Checklist
 
-### modules-client/
-- **poller.js** - imports `axios` ❌ MISSING
-- **agent.js** - imports `puppeteer-core` ✓
-- **config.js** - imports `dotenv` ✓
-- **visual-executor.js** - imports `pixelmatch`, `pngjs`, `jimp` ✓
-- **workflow-executor.js** - imports from local files only ✓
-- **workflow-storage.js** - imports from local files only ✓
-- **logger.js** - uses Node.js built-ins only ✓
-
-### modules-agents/
-- **utils/browser.mjs** - uses Node.js built-ins only ✓
-- **base/BaseAgent.js** - check for dependencies
-- **platforms/** - check for dependencies
+- [ ] Update all `buildDir` paths to use `/tmp` or `os.tmpdir()`
+- [ ] Add unique ID generation for concurrent request safety
+- [ ] Implement cleanup in `finally` blocks
+- [ ] Add proper error handling for mkdir operations
+- [ ] Test in both local and Vercel environments
+- [ ] Monitor `/tmp` usage in production
 
 ---
 
-## Action Items
+## 🔗 Related Resources
 
-### Immediate (Fix Runtime Errors)
-1. [ ] Add `axios` to package.json dependencies in `developer-zip-builder.mjs`
-   - File: `src/modules-installer/developer-zip-builder.mjs`
-   - Line: ~223-231 (dependencies object)
-   - Add: `"axios": "^1.6.0"`
-   - Priority: 🔴 CRITICAL - Agent cannot run without this
-
-### Cleanup Tasks (Reduce Bundle Size)
-2. [ ] Remove `crypto-js` from package.json dependencies
-   - Status: ✅ Verified - Not used in modules-client
-   - Action: Remove from dependencies object
-   - Benefit: Reduces ZIP size
-
-3. [ ] Remove `uuid` from package.json dependencies
-   - Status: ✅ Verified - Not used in modules-client
-   - Action: Remove from dependencies object
-   - Benefit: Reduces ZIP size
-
-4. [ ] Check modules-agents for any missing dependencies
-   - Review: `base/BaseAgent.js`
-   - Review: `platforms/InstagramAgent.js`
-   - Review: `platforms/FacebookAgent.js`
-   - Review: `platforms/TwitterAgent.js`
-   - Review: `utils/stealth.js`
-   - Review: `utils/human-behavior.js`
-
-### Testing
-5. [ ] Test developer ZIP installation
-   - Run `setup.bat` - verify Node.js and pnpm download
-   - Run `download_deps.bat` - verify all dependencies install
-   - Run `start_agent.bat` - verify no missing module errors
-
-6. [ ] Verify all imports resolve correctly
-   - Check for any other `ERR_MODULE_NOT_FOUND` errors
-   - Test agent startup and API connectivity
-
----
-
-## Notes
-
-- The error log shows `axios` is missing when trying to run the agent
-- All dependencies should be listed in package.json before `download_deps.bat` runs
-- Consider using `pnpm install` with `--frozen-lockfile` for reproducible builds
-- May want to add a dependency check script to validate all imports before building ZIP
-
----
-
-## Files to Modify
-
-1. `src/modules-installer/developer-zip-builder.mjs`
-   - Update package.json dependencies (add axios)
-   - Verify all required dependencies are included
-
----
-
-**Last Updated:** 2025-01-27
-**Next Step:** Add axios to package.json dependencies
-
+- [Vercel Serverless Functions Documentation](https://vercel.com/docs/functions/serverless-functions)
+- [Node.js os.tmpdir() API](https://nodejs.org/api/os.html#ostmpdir)
+- [Vercel Runtime Limits](https://vercel.com/docs/functions/serverless-functions/runtimes)

@@ -15,14 +15,27 @@
 import fs from 'fs/promises';
 import fsSync from 'fs';
 import path from 'path';
+import os from 'os';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
+import { v4 as uuidv4 } from 'uuid';
 import AdmZip from 'adm-zip';
 import https from 'https';
 import http from 'http';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
+
+/**
+ * Get a unique build directory in the temp folder
+ * @param {string} prefix - Prefix for the directory name
+ * @returns {string} Path to the build directory
+ */
+function getBuildDir(prefix = 'build') {
+  const tempBase = process.env.TMPDIR || os.tmpdir();
+  const uniqueId = uuidv4();
+  return path.join(tempBase, `abcd-tools-${prefix}-${uniqueId}`);
+}
 
 /**
  * Download Node.js portable binary for Windows
@@ -194,8 +207,16 @@ export async function buildDeveloperZip(config) {
     installPath,
   } = config;
 
-  const buildDir = path.join(__dirname, '../../.temp/developer-zip-build');
-  await fs.mkdir(buildDir, { recursive: true });
+  const buildDir = getBuildDir('developer-zip');
+  
+  // Create build directory with error handling
+  try {
+    await fs.mkdir(buildDir, { recursive: true });
+  } catch (error) {
+    if (error.code !== 'EEXIST') {
+      throw error;
+    }
+  }
 
   console.log('📦 Building developer ZIP...');
   console.log(`   Build directory: ${buildDir}\n`);
@@ -620,5 +641,15 @@ For support, visit: https://yoursite.com/support
       buildDir,
       message: error.message,
     };
+  } finally {
+    // Cleanup: Remove build directory after a delay to allow file operations to complete
+    // Note: In production, you may want to keep the directory until the file is uploaded
+    // For now, we'll let Vercel clean it up automatically, but this is here for reference
+    // Uncomment if you want immediate cleanup:
+    // try {
+    //   await fs.rm(buildDir, { recursive: true, force: true });
+    // } catch (cleanupError) {
+    //   console.warn('Failed to cleanup build directory:', cleanupError.message);
+    // }
   }
 }

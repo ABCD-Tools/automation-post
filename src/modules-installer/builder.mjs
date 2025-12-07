@@ -16,6 +16,7 @@
 
 import fs from 'fs/promises';
 import path from 'path';
+import os from 'os';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
 import { execSync } from 'child_process';
@@ -25,6 +26,17 @@ import AdmZip from 'adm-zip';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
+
+/**
+ * Get a unique build directory in the temp folder
+ * @param {string} prefix - Prefix for the directory name
+ * @returns {string} Path to the build directory
+ */
+function getBuildDir(prefix = 'build') {
+  const tempBase = process.env.TMPDIR || os.tmpdir();
+  const uniqueId = uuidv4();
+  return path.join(tempBase, `abcd-tools-${prefix}-${uniqueId}`);
+}
 
 /**
  * Generate installer package
@@ -43,12 +55,20 @@ export async function buildInstaller(config) {
   } = config;
   
   // Create temporary build directory
-  const buildDir = path.join(__dirname, '../../.temp/installer-build');
-  await fs.mkdir(buildDir, { recursive: true });
+  const buildDir = getBuildDir('installer');
+  
+  // Create build directory with error handling
+  try {
+    await fs.mkdir(buildDir, { recursive: true });
+  } catch (error) {
+    if (error.code !== 'EEXIST') {
+      throw error;
+    }
+  }
   
   console.log('📦 Building installer...');
   console.log(`   Build directory: ${buildDir}\n`);
-  
+
   try {
     // Step 1: Bundle client files
     console.log('[1/8] Bundling client files...');
@@ -388,6 +408,16 @@ For support, visit: https://yoursite.com/support
   } catch (error) {
     console.error('\n❌ Build failed:', error.message);
     throw error;
+  } finally {
+    // Cleanup: Remove build directory after a delay to allow file operations to complete
+    // Note: In production, you may want to keep the directory until the file is uploaded
+    // For now, we'll let Vercel clean it up automatically, but this is here for reference
+    // Uncomment if you want immediate cleanup:
+    // try {
+    //   await fs.rm(buildDir, { recursive: true, force: true });
+    // } catch (cleanupError) {
+    //   console.warn('Failed to cleanup build directory:', cleanupError.message);
+    // }
   }
 }
 
