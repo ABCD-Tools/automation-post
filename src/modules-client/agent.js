@@ -318,8 +318,12 @@ async function executeJob(job) {
     // Prepare template variables (username, password, etc.)
     const templateVariables = {};
     
-    // Extract account information from job content
-    const accountId = job.content?.account_id;
+    // Extract account information from job content or target_accounts
+    // For post jobs, account_id might be in target_accounts array
+    let accountId = job.content?.account_id;
+    if (!accountId && job.target_accounts && Array.isArray(job.target_accounts) && job.target_accounts.length > 0) {
+      accountId = job.target_accounts[0]; // Use first account for template variables
+    }
     const usernameFromJob = job.content?.username;
     
     if (accountId) {
@@ -421,6 +425,22 @@ async function executeJob(job) {
       // No account_id, but username is in job content
       logger.info(`Using username from job content: ${usernameFromJob}`);
       templateVariables.username = usernameFromJob;
+    }
+    
+    // Add post-specific template variables (caption, image_url) from job content
+    if (job.content?.caption) {
+      templateVariables.caption = job.content.caption;
+      logger.info(`   Caption: ${job.content.caption.substring(0, 50)}${job.content.caption.length > 50 ? '...' : ''}`);
+    }
+    
+    if (job.content?.image_url) {
+      templateVariables.image_url = job.content.image_url;
+      logger.info(`   Image URL: ${job.content.image_url}`);
+    }
+    
+    // Also support imagePath as alias for image_url
+    if (job.content?.image_url) {
+      templateVariables.imagePath = job.content.image_url;
     }
     
     // Set template variables in executor

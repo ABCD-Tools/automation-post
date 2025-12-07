@@ -205,27 +205,55 @@ export function validateAction(action) {
 }
 
 /**
- * Replace template variables in action text
+ * Replace template variables in action fields
+ * Replaces {{variable}} in text, value, caption, url, and other string fields
  */
 export function replaceTemplates(action, variables) {
-  if (!action.params.text) {
+  if (!variables || Object.keys(variables).length === 0) {
     return action;
   }
 
-  let text = action.params.text;
+  // Helper function to replace templates in a string
+  const replaceInString = (str) => {
+    if (typeof str !== 'string') return str;
+    let result = str;
+    for (const [key, value] of Object.entries(variables)) {
+      const template = `{{${key}}}`;
+      result = result.replace(new RegExp(template.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), value);
+    }
+    return result;
+  };
 
-  for (const [key, value] of Object.entries(variables)) {
-    const template = `{{${key}}}`;
-    text = text.replace(new RegExp(template, 'g'), value);
+  // Create a new action object with replaced values
+  const processedAction = { ...action };
+
+  // Replace in action.text (for type actions)
+  if (processedAction.text) {
+    processedAction.text = replaceInString(processedAction.text);
   }
 
-  return {
-    ...action,
-    params: {
-      ...action.params,
-      text,
-    },
-  };
+  // Replace in action.params
+  if (processedAction.params) {
+    processedAction.params = { ...processedAction.params };
+
+    // Replace in common text fields
+    const textFields = ['text', 'value', 'caption', 'url', 'image_url', 'imagePath', 'videoPath', 'filePath'];
+    for (const field of textFields) {
+      if (processedAction.params[field]) {
+        processedAction.params[field] = replaceInString(processedAction.params[field]);
+      }
+    }
+
+    // Replace in nested objects (like visual data)
+    if (processedAction.params.visual) {
+      processedAction.params.visual = { ...processedAction.params.visual };
+      if (processedAction.params.visual.text) {
+        processedAction.params.visual.text = replaceInString(processedAction.params.visual.text);
+      }
+    }
+  }
+
+  return processedAction;
 }
 
 /**
