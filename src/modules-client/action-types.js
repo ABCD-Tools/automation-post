@@ -232,6 +232,14 @@ export function replaceTemplates(action, variables) {
     processedAction.text = replaceInString(processedAction.text);
   }
 
+  // Replace in top-level file path fields (for upload actions)
+  const topLevelFileFields = ['filePath', 'imagePath', 'videoPath'];
+  for (const field of topLevelFileFields) {
+    if (processedAction[field]) {
+      processedAction[field] = replaceInString(processedAction[field]);
+    }
+  }
+
   // Replace in action.params
   if (processedAction.params) {
     processedAction.params = { ...processedAction.params };

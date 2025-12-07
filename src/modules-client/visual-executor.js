@@ -1,6 +1,15 @@
 import pixelmatch from 'pixelmatch';
 import { PNG } from 'pngjs';
 import Jimp from 'jimp';
+import fs from 'fs';
+import path from 'path';
+import https from 'https';
+import http from 'http';
+import { fileURLToPath } from 'url';
+import { dirname } from 'path';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 /**
  * VisualActionExecutor - Executes recorded actions using VISUAL DATA
@@ -162,6 +171,44 @@ export class VisualActionExecutor {
         // Support both formats for text value
         const textValue = action.text || action.params?.text || '';
         await element.type(textValue, { delay: 50 });
+        return { success: true, method: 'selector' };
+      } else if (action.type === 'upload') {
+        // Handle file upload - use setInputFiles instead of clicking
+        // Check multiple locations for filePath (top level, params, or imagePath alias)
+        const filePath = action.filePath || action.params?.filePath || action.params?.imagePath || action.imagePath || '';
+        if (!filePath) {
+          return { success: false, method: 'selector', error: 'No filePath provided for upload action' };
+        }
+        
+        // Check if filePath is a URL (starts with http:// or https://)
+        let localFilePath = filePath;
+        if (filePath.startsWith('http://') || filePath.startsWith('https://')) {
+          // Download file from URL to temporary location
+          localFilePath = await this.downloadFileFromUrl(filePath);
+        }
+        
+        // Verify file exists
+        if (!fs.existsSync(localFilePath)) {
+          return { success: false, method: 'selector', error: `File not found: ${localFilePath}` };
+        }
+        
+        // Use setInputFiles to set the file directly (avoids opening file picker)
+        await element.setInputFiles(localFilePath);
+        
+        // Clean up temporary file if it was downloaded
+        if (filePath.startsWith('http://') || filePath.startsWith('https://')) {
+          // Don't delete immediately - wait a bit in case upload is still processing
+          setTimeout(() => {
+            try {
+              if (fs.existsSync(localFilePath)) {
+                fs.unlinkSync(localFilePath);
+              }
+            } catch (err) {
+              // Ignore cleanup errors
+            }
+          }, 5000);
+        }
+        
         return { success: true, method: 'selector' };
       }
 
@@ -584,6 +631,135 @@ export class VisualActionExecutor {
           await element.type(textValue, { delay: 50 });
           return { success: true, method: 'visual' };
         }
+      } else if (action.type === 'upload') {
+        // Handle file upload - find file input element and use setInputFiles
+        const elementHandle = await this.page.evaluateHandle(
+          (pos) => document.elementFromPoint(pos.x, pos.y),
+          candidate.position.absolute
+        );
+        
+        const element = elementHandle.asElement();
+        if (!element) {
+          return { success: false, method: 'visual', error: 'Could not find element at position' };
+        }
+        
+        // Verify it's a file input
+        const tagName = await element.evaluate(el => el.tagName);
+        const inputType = await element.evaluate(el => el.type || '');
+        if (tagName !== 'INPUT' || inputType !== 'file') {
+          // Try to find a file input nearby
+          const fileInput = await this.page.evaluateHandle(
+            (pos) => {
+              const element = document.elementFromPoint(pos.x, pos.y);
+              if (!element) return null;
+              
+              // Check if element itself is a file input
+              if (element.tagName === 'INPUT' && element.type === 'file') {
+                return element;
+              }
+              
+              // Check parent elements
+              let parent = element.parentElement;
+              for (let i = 0; i < 3 && parent; i++) {
+                if (parent.tagName === 'INPUT' && parent.type === 'file') {
+                  return parent;
+                }
+                parent = parent.parentElement;
+              }
+              
+              // Search for file input in the same container
+              const container = element.closest('form, div, section');
+              if (container) {
+                const fileInputs = container.querySelectorAll('input[type="file"]');
+                if (fileInputs.length > 0) {
+                  return fileInputs[0];
+                }
+              }
+              
+              return null;
+            },
+            candidate.position.absolute
+          );
+          
+          if (fileInput && fileInput.asElement()) {
+            // Check multiple locations for filePath (top level, params, or imagePath alias)
+            const filePath = action.filePath || action.params?.filePath || action.params?.imagePath || action.imagePath || '';
+            if (!filePath) {
+              return { success: false, method: 'visual', error: 'No filePath provided for upload action' };
+            }
+            
+            // Check if filePath is a URL (starts with http:// or https://)
+            let localFilePath = filePath;
+            if (filePath.startsWith('http://') || filePath.startsWith('https://')) {
+              // Download file from URL to temporary location
+              localFilePath = await this.downloadFileFromUrl(filePath);
+            }
+            
+            // Verify file exists
+            if (!fs.existsSync(localFilePath)) {
+              return { success: false, method: 'visual', error: `File not found: ${localFilePath}` };
+            }
+            
+            // Use setInputFiles to set the file directly (avoids opening file picker)
+            await fileInput.asElement().setInputFiles(localFilePath);
+            
+            // Clean up temporary file if it was downloaded
+            if (filePath.startsWith('http://') || filePath.startsWith('https://')) {
+              // Don't delete immediately - wait a bit in case upload is still processing
+              setTimeout(() => {
+                try {
+                  if (fs.existsSync(localFilePath)) {
+                    fs.unlinkSync(localFilePath);
+                  }
+                } catch (err) {
+                  // Ignore cleanup errors
+                }
+              }, 5000);
+            }
+            
+            return { success: true, method: 'visual' };
+          } else {
+            return { success: false, method: 'visual', error: 'Could not find file input element' };
+          }
+        } else {
+          // Element is already a file input
+          // Check multiple locations for filePath (top level, params, or imagePath alias)
+          const filePath = action.filePath || action.params?.filePath || action.params?.imagePath || action.imagePath || '';
+          if (!filePath) {
+            return { success: false, method: 'visual', error: 'No filePath provided for upload action' };
+          }
+          
+          // Check if filePath is a URL (starts with http:// or https://)
+          let localFilePath = filePath;
+          if (filePath.startsWith('http://') || filePath.startsWith('https://')) {
+            // Download file from URL to temporary location
+            localFilePath = await this.downloadFileFromUrl(filePath);
+          }
+          
+          // Verify file exists
+          if (!fs.existsSync(localFilePath)) {
+            return { success: false, method: 'visual', error: `File not found: ${localFilePath}` };
+          }
+          
+          // Use setInputFiles to set the file directly (avoids opening file picker)
+          await element.setInputFiles(localFilePath);
+          
+          // Clean up temporary file if it was downloaded
+          if (filePath.startsWith('http://') || filePath.startsWith('https://')) {
+            // Don't delete immediately - wait a bit in case upload is still processing
+            setTimeout(() => {
+              try {
+                if (fs.existsSync(localFilePath)) {
+                  fs.unlinkSync(localFilePath);
+                }
+              } catch (err) {
+                // Ignore cleanup errors
+              }
+            }, 5000);
+          }
+          
+          return { success: true, method: 'visual' };
+        }
       }
 
       return { success: false, method: 'visual', error: 'Could not execute on candidate' };
@@ -626,6 +802,67 @@ export class VisualActionExecutor {
     } catch (error) {
       return { success: false, method: 'position', error: error.message };
     }
+  }
+
+  /**
+   * Download file from URL to temporary location
+   * @param {string} url - URL to download from
+   * @returns {Promise<string>} Path to downloaded file
+   */
+  async downloadFileFromUrl(url) {
+    return new Promise((resolve, reject) => {
+      try {
+        // Create temp directory if it doesn't exist
+        const tempDir = path.join(__dirname, '../../temp');
+        if (!fs.existsSync(tempDir)) {
+          fs.mkdirSync(tempDir, { recursive: true });
+        }
+        
+        // Generate unique filename
+        const urlParts = url.split('/');
+        const originalFilename = urlParts[urlParts.length - 1].split('?')[0]; // Remove query params
+        const ext = path.extname(originalFilename) || '.jpg';
+        const filename = `download_${Date.now()}_${Math.random().toString(36).substring(7)}${ext}`;
+        const filePath = path.join(tempDir, filename);
+        
+        // Determine protocol
+        const isHttps = url.startsWith('https://');
+        const client = isHttps ? https : http;
+        
+        // Download file
+        const file = fs.createWriteStream(filePath);
+        
+        client.get(url, (response) => {
+          // Handle redirects
+          if (response.statusCode === 301 || response.statusCode === 302) {
+            file.close();
+            fs.unlinkSync(filePath);
+            return this.downloadFileFromUrl(response.headers.location).then(resolve).catch(reject);
+          }
+          
+          if (response.statusCode !== 200) {
+            file.close();
+            fs.unlinkSync(filePath);
+            return reject(new Error(`Failed to download file: ${response.statusCode} ${response.statusMessage}`));
+          }
+          
+          response.pipe(file);
+          
+          file.on('finish', () => {
+            file.close();
+            resolve(filePath);
+          });
+        }).on('error', (err) => {
+          file.close();
+          if (fs.existsSync(filePath)) {
+            fs.unlinkSync(filePath);
+          }
+          reject(err);
+        });
+      } catch (error) {
+        reject(error);
+      }
+    });
   }
 
   /**
