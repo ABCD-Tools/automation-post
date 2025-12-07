@@ -56,6 +56,7 @@ GRANT ALL ON TABLE public.notifications TO service_role;
 ALTER TABLE public.notifications ENABLE ROW LEVEL SECURITY;
 
 -- RLS Policy: Users can only view their own notifications
+DROP POLICY IF EXISTS "Users can view their own notifications" ON public.notifications;
 CREATE POLICY "Users can view their own notifications"
     ON public.notifications
     FOR SELECT
@@ -63,6 +64,7 @@ CREATE POLICY "Users can view their own notifications"
     USING (auth.uid() = user_id);
 
 -- RLS Policy: Users can insert their own notifications (for testing, etc.)
+DROP POLICY IF EXISTS "Users can insert their own notifications" ON public.notifications;
 CREATE POLICY "Users can insert their own notifications"
     ON public.notifications
     FOR INSERT
@@ -70,6 +72,7 @@ CREATE POLICY "Users can insert their own notifications"
     WITH CHECK (auth.uid() = user_id);
 
 -- RLS Policy: Users can update their own notifications (mark as read/dismissed)
+DROP POLICY IF EXISTS "Users can update their own notifications" ON public.notifications;
 CREATE POLICY "Users can update their own notifications"
     ON public.notifications
     FOR UPDATE
@@ -99,6 +102,7 @@ BEGIN
 END;
 $$;
 
+DROP TRIGGER IF EXISTS trigger_set_notification_read_at ON public.notifications;
 CREATE TRIGGER trigger_set_notification_read_at
     BEFORE UPDATE ON public.notifications
     FOR EACH ROW

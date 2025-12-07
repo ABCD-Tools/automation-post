@@ -50,6 +50,7 @@ BEGIN
 END;
 $$;
 
+DROP TRIGGER IF EXISTS trigger_update_user_preferences_updated_at ON public.user_preferences;
 CREATE TRIGGER trigger_update_user_preferences_updated_at
     BEFORE UPDATE ON public.user_preferences
     FOR EACH ROW
@@ -63,6 +64,7 @@ GRANT ALL ON TABLE public.user_preferences TO service_role;
 ALTER TABLE public.user_preferences ENABLE ROW LEVEL SECURITY;
 
 -- RLS Policy: Users can only view their own preferences
+DROP POLICY IF EXISTS "Users can view their own preferences" ON public.user_preferences;
 CREATE POLICY "Users can view their own preferences"
     ON public.user_preferences
     FOR SELECT
@@ -70,6 +72,7 @@ CREATE POLICY "Users can view their own preferences"
     USING (auth.uid() = user_id);
 
 -- RLS Policy: Users can insert their own preferences
+DROP POLICY IF EXISTS "Users can insert their own preferences" ON public.user_preferences;
 CREATE POLICY "Users can insert their own preferences"
     ON public.user_preferences
     FOR INSERT
@@ -77,6 +80,7 @@ CREATE POLICY "Users can insert their own preferences"
     WITH CHECK (auth.uid() = user_id);
 
 -- RLS Policy: Users can update their own preferences
+DROP POLICY IF EXISTS "Users can update their own preferences" ON public.user_preferences;
 CREATE POLICY "Users can update their own preferences"
     ON public.user_preferences
     FOR UPDATE

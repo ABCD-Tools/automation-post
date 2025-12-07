@@ -46,6 +46,7 @@ GRANT ALL ON TABLE public.analytics_events TO service_role;
 ALTER TABLE public.analytics_events ENABLE ROW LEVEL SECURITY;
 
 -- RLS Policy: Users can only view their own analytics
+DROP POLICY IF EXISTS "Users can view their own analytics" ON public.analytics_events;
 CREATE POLICY "Users can view their own analytics"
     ON public.analytics_events
     FOR SELECT
@@ -53,6 +54,7 @@ CREATE POLICY "Users can view their own analytics"
     USING (auth.uid() = user_id);
 
 -- RLS Policy: Users can insert their own analytics
+DROP POLICY IF EXISTS "Users can insert their own analytics" ON public.analytics_events;
 CREATE POLICY "Users can insert their own analytics"
     ON public.analytics_events
     FOR INSERT

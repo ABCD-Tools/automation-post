@@ -9,13 +9,30 @@ const supabase = createSupabaseServiceRoleClient();
  * @param {string} accountData.platform - Platform name (instagram, facebook, twitter)
  * @param {string} accountData.username - Account username
  * @param {string} accountData.encryptedPassword - Password encrypted client-side
+ * @param {string} accountData.clientId - Client ID (UUID) that this account is encrypted for
  * @returns {Promise<Object>} Created account object
  */
 export async function addAccount(userId, accountData) {
-  const { platform, username, encryptedPassword } = accountData;
+  const { platform, username, encryptedPassword, clientId } = accountData;
 
   if (!platform || !username || !encryptedPassword) {
     throw new Error('Platform, username, and encrypted password are required');
+  }
+
+  if (!clientId) {
+    throw new Error('Client ID is required');
+  }
+
+  // Verify client exists and belongs to user
+  const { data: client, error: clientError } = await supabase
+    .from('clients')
+    .select('client_id')
+    .eq('id', clientId)
+    .eq('user_id', userId)
+    .single();
+
+  if (clientError || !client) {
+    throw new Error('Client not found or access denied');
   }
 
   // Validate platform
@@ -50,7 +67,7 @@ export async function addAccount(userId, accountData) {
     throw new Error('Free tier limit reached. Maximum 3 accounts allowed.');
   }
 
-  // Insert account with status 'pending_verification'
+  // Insert account with status 'active' (no verification needed for social media accounts)
   const { data: account, error: accountError } = await supabase
     .from('accounts')
     .insert({
@@ -58,7 +75,8 @@ export async function addAccount(userId, accountData) {
       platform: platform.toLowerCase(),
       username,
       encrypted_password: encryptedPassword,
-      status: 'pending_verification',
+      client_id: client.client_id, // Store client_id string, not UUID
+      status: 'active',
     })
     .select()
     .single();
@@ -67,32 +85,8 @@ export async function addAccount(userId, accountData) {
     throw new Error(`Failed to create account: ${accountError.message}`);
   }
 
-  // Create verification job
-  const { data: job, error: jobError } = await supabase
-    .from('jobs')
-    .insert({
-      user_id: userId,
-      job_type: 'verify_account',
-      status: 'queued',
-      content: {
-        account_id: account.id,
-        platform: platform.toLowerCase(),
-        username,
-      },
-      target_accounts: [account.id],
-      expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(), // 7 days
-    })
-    .select()
-    .single();
-
-  if (jobError) {
-    // Account was created but job creation failed - log error but don't fail the request
-    console.error('Failed to create verification job:', jobError);
-  }
-
   return {
     account,
-    verificationJob: job || null,
   };
 }
 

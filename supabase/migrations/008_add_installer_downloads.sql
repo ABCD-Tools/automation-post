@@ -54,6 +54,7 @@ GRANT ALL ON TABLE public.installer_downloads TO service_role;
 ALTER TABLE public.installer_downloads ENABLE ROW LEVEL SECURITY;
 
 -- RLS Policy: Users can only view their own downloads
+DROP POLICY IF EXISTS "Users can view their own installer downloads" ON public.installer_downloads;
 CREATE POLICY "Users can view their own installer downloads"
     ON public.installer_downloads
     FOR SELECT
@@ -61,6 +62,7 @@ CREATE POLICY "Users can view their own installer downloads"
     USING (auth.uid() = user_id);
 
 -- RLS Policy: Users can insert their own downloads
+DROP POLICY IF EXISTS "Users can insert their own installer downloads" ON public.installer_downloads;
 CREATE POLICY "Users can insert their own installer downloads"
     ON public.installer_downloads
     FOR INSERT
@@ -68,6 +70,7 @@ CREATE POLICY "Users can insert their own installer downloads"
     WITH CHECK (auth.uid() = user_id);
 
 -- RLS Policy: Users can update their own downloads (for status changes)
+DROP POLICY IF EXISTS "Users can update their own installer downloads" ON public.installer_downloads;
 CREATE POLICY "Users can update their own installer downloads"
     ON public.installer_downloads
     FOR UPDATE

@@ -205,6 +205,7 @@ export async function buildDeveloperZip(config) {
     decryptionKey,
     browserPath,
     installPath,
+    downloadToken,
   } = config;
 
   const buildDir = getBuildDir('developer-zip');
@@ -219,7 +220,8 @@ export async function buildDeveloperZip(config) {
   }
 
   console.log('📦 Building developer ZIP...');
-  console.log(`   Build directory: ${buildDir}\n`);
+  console.log(`   Build directory: ${buildDir}`);
+  console.log(`   Download token: ${downloadToken ? 'Present' : 'Missing'}\n`);
 
   try {
     // Step 1: Copy modules-agents and modules-client
@@ -268,6 +270,7 @@ MAX_JOBS_PER_CYCLE=5
 IDLE_TIMEOUT=300000
 
 # Installation
+DOWNLOAD_TOKEN=${downloadToken || ''}
 INSTALL_PATH=${installPath}
 
 # Agent Version
@@ -396,6 +399,7 @@ MAX_JOBS_PER_CYCLE=5
 IDLE_TIMEOUT=300000
 
 # Installation
+DOWNLOAD_TOKEN=${downloadToken || ''}
 INSTALL_PATH=${installPath}
 
 # Agent Version

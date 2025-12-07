@@ -3,11 +3,17 @@ import Sidebar from "./dashboard/sidebar";
 import DashboardNavbar from "@components/DashboardNavbar";
 import { getJson, postJson, deleteJson } from "@utils/api";
 import { toast } from "react-toastify";
+import { 
+  encryptAccountPassword, 
+  encryptAccountPasswordWithClientKey,
+  decryptClientEncryptionKey 
+} from "@modules-view/utils/encryption";
 
 export default function Accounts() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [accounts, setAccounts] = useState([]);
+  const [clients, setClients] = useState([]);
   const [showAddModal, setShowAddModal] = useState(false);
   const [adding, setAdding] = useState(false);
   const [filters, setFilters] = useState({ platform: "", status: "" });
@@ -16,10 +22,12 @@ export default function Accounts() {
     platform: "instagram",
     username: "",
     password: "",
+    clientId: "",
   });
 
   useEffect(() => {
     fetchAccounts();
+    fetchClients();
   }, [filters]);
 
   const fetchAccounts = async () => {
@@ -43,6 +51,16 @@ export default function Accounts() {
     }
   };
 
+  const fetchClients = async () => {
+    try {
+      const response = await getJson("/api/clients/list");
+      setClients(response.clients || []);
+    } catch (err) {
+      console.error("Failed to load clients:", err);
+      // Don't show error toast for clients - it's not critical
+    }
+  };
+
   const handleAddAccount = async (e) => {
     e.preventDefault();
     if (!newAccount.username || !newAccount.password) {
@@ -50,34 +68,61 @@ export default function Accounts() {
       return;
     }
 
+    if (!newAccount.clientId) {
+      toast.error("Please select a client");
+      return;
+    }
+
     try {
       setAdding(true);
-      // TODO: Encrypt password client-side before sending
-      // For now, sending plain password (should be encrypted)
+      
+      // Get client encryption key
+      const authToken = localStorage.getItem('auth_token') || sessionStorage.getItem('auth_token');
+      if (!authToken) {
+        throw new Error('Authentication required. Please log in again.');
+      }
+
+      // Get user ID from token (simplified - in production, decode JWT properly)
+      const userResponse = await getJson('/api/auth/me');
+      const userId = userResponse.id;
+      if (!userId) {
+        throw new Error('Unable to get user ID');
+      }
+
+      // Get encrypted encryption key from server
+      const keyResponse = await getJson(`/api/clients/${newAccount.clientId}/encryption-key`);
+      if (!keyResponse.encryptedKey) {
+        throw new Error('Failed to get client encryption key');
+      }
+
+      // Decrypt client encryption key
+      const clientEncryptionKey = await decryptClientEncryptionKey(
+        keyResponse.encryptedKey,
+        authToken,
+        userId
+      );
+
+      // Encrypt password using client's encryption key
+      const encryptedPassword = await encryptAccountPasswordWithClientKey(
+        newAccount.password,
+        clientEncryptionKey
+      );
+      
       const response = await postJson("/api/accounts/add", {
         platform: newAccount.platform,
         username: newAccount.username,
-        encryptedPassword: newAccount.password, // Should be encrypted
+        encryptedPassword: encryptedPassword,
+        clientId: newAccount.clientId,
       });
 
-      toast.success("Account added successfully. Verification in progress...");
+      toast.success("Account added successfully.");
       setShowAddModal(false);
-      setNewAccount({ platform: "instagram", username: "", password: "" });
+      setNewAccount({ platform: "instagram", username: "", password: "", clientId: "" });
       fetchAccounts();
     } catch (err) {
       toast.error(err.message || "Failed to add account");
     } finally {
       setAdding(false);
-    }
-  };
-
-  const handleVerify = async (accountId) => {
-    try {
-      await postJson("/api/accounts/verify", { account_id: accountId });
-      toast.success("Verification job created");
-      fetchAccounts();
-    } catch (err) {
-      toast.error(err.message || "Failed to verify account");
     }
   };
 
@@ -249,17 +294,9 @@ export default function Accounts() {
                       </div>
 
                       <div className="flex gap-2">
-                        {account.status !== "active" && (
-                          <button
-                            onClick={() => handleVerify(account.id)}
-                            className="flex-1 bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded text-sm transition-colors"
-                          >
-                            Verify
-                          </button>
-                        )}
                         <button
                           onClick={() => handleDelete(account.id)}
-                          className="bg-red-600 hover:bg-red-700 text-white px-3 py-2 rounded text-sm transition-colors"
+                          className="flex-1 bg-red-600 hover:bg-red-700 text-white px-3 py-2 rounded text-sm transition-colors"
                         >
                           Delete
                         </button>
@@ -279,6 +316,31 @@ export default function Accounts() {
                   Add Account
                 </h2>
                 <form onSubmit={handleAddAccount}>
+                  <div className="mb-4">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Client <span className="text-red-500">*</span>
+                    </label>
+                    <select
+                      value={newAccount.clientId}
+                      onChange={(e) =>
+                        setNewAccount({ ...newAccount, clientId: e.target.value })
+                      }
+                      className="w-full border border-gray-300 rounded px-3 py-2"
+                      required
+                    >
+                      <option value="">Select a client...</option>
+                      {clients.map((client) => (
+                        <option key={client.id} value={client.id}>
+                          {client.client_name || client.client_id} {client.status === 'online' ? '🟢' : ''}
+                        </option>
+                      ))}
+                    </select>
+                    {clients.length === 0 && (
+                      <p className="text-xs text-gray-500 mt-1">
+                        No clients available. Please install a client agent first.
+                      </p>
+                    )}
+                  </div>
                   <div className="mb-4">
                     <label className="block text-sm font-medium text-gray-700 mb-2">
                       Platform
@@ -333,6 +395,7 @@ export default function Accounts() {
                           platform: "instagram",
                           username: "",
                           password: "",
+                          clientId: "",
                         });
                       }}
                       className="flex-1 border border-gray-300 text-gray-700 px-4 py-2 rounded hover:bg-gray-50 transition-colors"

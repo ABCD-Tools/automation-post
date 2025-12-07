@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/router';
 import { generateAESKey, validateKeys } from '@modules-view/utils/key-generator';
 import { detectBrowser, validateBrowserPath } from '@modules-view/utils/browser-detector';
 
 export default function Install() {
-  const [installPath, setInstallPath] = useState('');
+  const router = useRouter();
   const [browserPath, setBrowserPath] = useState('');
   const [keyMode, setKeyMode] = useState('auto'); // 'auto' or 'manual'
   const [encryptionKey, setEncryptionKey] = useState('');
@@ -11,19 +12,21 @@ export default function Install() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
-  const [browserDetected, setBrowserDetected] = useState(null);
-  const [debugMode, setDebugMode] = useState(false);
-
-  // Set default install path
-  useEffect(() => {
-    if (!installPath) {
-      // Default to AppData\Local\ABCDTools
-      // Use {localappdata} which Inno Setup will resolve to %LOCALAPPDATA%
-      // For display purposes, show a typical path
-      const defaultPath = '{localappdata}\\ABCDTools';
-      setInstallPath(defaultPath);
-    }
-  }, []);
+  const [showCommonPaths, setShowCommonPaths] = useState(false);
+  
+  // Common browser paths (no API call needed)
+  const commonBrowserPaths = {
+    chrome: [
+      'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+      'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
+      'C:\\Users\\%USERNAME%\\AppData\\Local\\Google\\Chrome\\Application\\chrome.exe',
+    ],
+    edge: [
+      'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe',
+      'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
+      'C:\\Users\\%USERNAME%\\AppData\\Local\\Microsoft\\Edge\\Application\\msedge.exe',
+    ],
+  };
 
   // Auto-generate keys when mode is 'auto'
   useEffect(() => {
@@ -38,16 +41,6 @@ export default function Install() {
         });
     }
   }, [keyMode]);
-
-  const handleBrowseInstallPath = () => {
-    // Note: HTML5 file picker doesn't support directory selection directly
-    // For MVP, use text input with manual path entry
-    // In production, consider using a native file dialog via Electron or similar
-    const path = prompt('Enter installation path:', installPath);
-    if (path) {
-      setInstallPath(path);
-    }
-  };
 
   const handleBrowseBrowser = () => {
     // Create file input for .exe selection
@@ -66,72 +59,20 @@ export default function Install() {
     input.click();
   };
 
-  const handleAutoDetectBrowser = async () => {
-    setLoading(true);
-    setError('');
-    setBrowserDetected(null);
-    
-    try {
-      // Call server API to get common browser paths
-      const response = await fetch('/api/browser/detect');
-      const data = await response.json();
-      
-      if (data.success && data.browsers) {
-        // Try Chrome first, then Edge
-        const chromePaths = data.browsers.chrome.paths;
-        const edgePaths = data.browsers.edge.paths;
-        
-        // For now, set the first Chrome path as default (user can change it)
-        // In a real implementation, we'd need to check if the file exists
-        // which requires a browser extension or desktop app
-        if (chromePaths && chromePaths.length > 0) {
-          setBrowserPath(chromePaths[0]);
-          setBrowserDetected({
-            found: true,
-            browser: 'chrome',
-            path: chromePaths[0],
-            message: `Auto-detected Chrome at: ${chromePaths[0]}. Please verify this path is correct.`,
-            allPaths: {
-              chrome: chromePaths,
-              edge: edgePaths,
-            },
-          });
-          setSuccess(`Auto-detected Chrome. Path set to: ${chromePaths[0]}`);
-        } else if (edgePaths && edgePaths.length > 0) {
-          setBrowserPath(edgePaths[0]);
-          setBrowserDetected({
-            found: true,
-            browser: 'edge',
-            path: edgePaths[0],
-            message: `Auto-detected Edge at: ${edgePaths[0]}. Please verify this path is correct.`,
-            allPaths: {
-              chrome: chromePaths,
-              edge: edgePaths,
-            },
-          });
-          setSuccess(`Auto-detected Edge. Path set to: ${edgePaths[0]}`);
-        } else {
-          setBrowserDetected({
-            found: false,
-            message: 'Could not auto-detect browser. Please use the Browse button to select your browser executable.',
-            allPaths: {
-              chrome: chromePaths,
-              edge: edgePaths,
-            },
-          });
-        }
-      } else {
-        throw new Error('Failed to get browser paths from server');
+  const handleShowCommonPaths = () => {
+    setShowCommonPaths(!showCommonPaths);
+    if (!showCommonPaths) {
+      // Set first Chrome path as default when showing common paths
+      if (commonBrowserPaths.chrome.length > 0 && !browserPath) {
+        setBrowserPath(commonBrowserPaths.chrome[0]);
       }
-    } catch (err) {
-      setError('Failed to detect browser: ' + err.message);
-      setBrowserDetected({
-        found: false,
-        message: 'Auto-detection failed. Please use the Browse button to select your browser executable.',
-      });
-    } finally {
-      setLoading(false);
     }
+  };
+
+  const handleSelectCommonPath = (path) => {
+    setBrowserPath(path);
+    setShowCommonPaths(false);
+    setSuccess(`Browser path set to: ${path}`);
   };
 
   const handleDownload = async () => {
@@ -139,12 +80,10 @@ export default function Install() {
     setError('');
     setSuccess('');
 
-    // Validate inputs
-    if (!installPath) {
-      setError('Installation path is required');
-      setLoading(false);
-      return;
-    }
+    // For developer ZIP, we don't need installPath upfront
+    // The agent will send its actual installPath (process.cwd()) when it registers
+    // Use a placeholder - it won't be used anyway since agent sends actual path
+    const placeholderInstallPath = '{extract_location}';
 
     if (!browserPath) {
       setError('Browser path is required');
@@ -192,11 +131,11 @@ export default function Install() {
           'Authorization': `Bearer ${token}`,
         },
         body: JSON.stringify({
-          installPath,
+          installPath: placeholderInstallPath, // Placeholder - agent will send actual path
           browserPath,
           encryptionKey,
           decryptionKey,
-          debugMode,
+          debugMode: true, // Always true
         }),
       });
 
@@ -209,74 +148,27 @@ export default function Install() {
       const data = await response.json();
       
       if (data.downloadUrl) {
-        // In debug mode, skip auto-install and go straight to ZIP download
-        if (debugMode) {
-          // Developer ZIP - redirect directly
-          window.location.href = data.downloadUrl;
-          setSuccess('Developer ZIP downloaded. Extract and run start_agent.bat to start the agent.');
-          setLoading(false);
-          return;
+        // Store download state before redirecting
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('isDownloaded', 'true');
         }
-
-        // Ask user if they want auto-install executable or manual ZIP download
-        const useAutoInstall = confirm(
-          'Choose installation method:\n\n' +
-          'OK = Auto-Install (Downloads .exe installer that installs automatically)\n' +
-          'Cancel = Manual Download (Downloads ZIP file to install manually)\n\n' +
-          'Auto-Install is recommended - just double-click the .exe file!'
-        );
-
-        if (useAutoInstall) {
-          // Generate and download auto-install executable
-          try {
-            setLoading(true);
-            const exeResponse = await fetch('/api/installer/auto-install', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${token}`,
-              },
-              body: JSON.stringify({
-                downloadToken: data.downloadToken,
-                installPath: installPath,
-              }),
-            });
-
-            if (!exeResponse.ok) {
-              const errorData = await exeResponse.json().catch(() => ({ error: 'Failed to generate installer' }));
-              throw new Error(errorData.error || 'Failed to generate installer executable');
-            }
-
-            // Response is JSON with downloadUrl (executable is in Supabase Storage)
-            const exeData = await exeResponse.json();
-            
-            if (exeData.downloadUrl) {
-              // Redirect to Supabase Storage URL for download
-              window.location.href = exeData.downloadUrl;
-            } else {
-              throw new Error('No download URL received from server');
-            }
-
-            setSuccess(
-              'Installer downloaded! Double-click ABCDToolsInstaller.exe to install automatically. ' +
-              'The installer will download and set up ABCD Tools for you.'
-            );
-          } catch (exeError) {
-            console.error('Auto-install executable error:', exeError);
-            setError('Failed to generate installer executable: ' + exeError.message + '. Trying manual download...');
-            // Fallback to manual download
-            setTimeout(() => {
-              window.location.href = data.downloadUrl;
-              setSuccess('Installer ZIP downloaded. Extract and run agent.exe to install.');
-            }, 2000);
-          } finally {
-            setLoading(false);
-          }
-        } else {
-          // Manual download - redirect to ZIP URL
-          window.location.href = data.downloadUrl;
-          setSuccess('Installer ZIP downloaded. Extract the ZIP file and run agent.exe to install.');
-        }
+        
+        // Create a temporary link to trigger download without navigating away
+        const link = document.createElement('a');
+        link.href = data.downloadUrl;
+        link.download = ''; // This tells the browser to download instead of navigate
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        
+        // Redirect to clients page after a short delay
+        setTimeout(() => {
+          router.push('/clients');
+        }, 500);
+        
+        // Note: Success message will be shown on clients page
+        setLoading(false);
+        return;
       } else {
         throw new Error('No download URL received');
       }
@@ -294,29 +186,18 @@ export default function Install() {
         <h1 className="text-3xl font-bold mb-6">Install ABCD Tools Client</h1>
         
         <div className="bg-white rounded-lg shadow-md p-6 space-y-6">
-          {/* Installation Directory */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Installation Directory
-            </label>
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={installPath}
-                onChange={(e) => setInstallPath(e.target.value)}
-                placeholder="C:\Users\YourName\AppData\Local\ABCDTools"
-                className="flex-1 px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-              <button
-                onClick={handleBrowseInstallPath}
-                className="px-4 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200"
-              >
-                Browse...
-              </button>
+          {/* Info Banner */}
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+            <div className="flex items-start">
+              <span className="text-2xl mr-3">ℹ️</span>
+              <div>
+                <h3 className="font-semibold text-blue-900 mb-1">Automatic Installation Detection</h3>
+                <p className="text-sm text-blue-800">
+                  You don't need to specify an installation directory. The agent will automatically detect 
+                  where it's running from and register that location with the server when it starts.
+                </p>
+              </div>
             </div>
-            <p className="mt-1 text-sm text-gray-500">
-              Default: %APPDATA%\Local\ABCDTools
-            </p>
           </div>
 
           {/* Browser Selection */}
@@ -333,11 +214,10 @@ export default function Install() {
                 className="flex-1 px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
               <button
-                onClick={handleAutoDetectBrowser}
-                disabled={loading}
-                className="px-4 py-2 bg-blue-100 text-blue-700 rounded-md hover:bg-blue-200 disabled:opacity-50"
+                onClick={handleShowCommonPaths}
+                className="px-4 py-2 bg-blue-100 text-blue-700 rounded-md hover:bg-blue-200"
               >
-                Auto-detect
+                {showCommonPaths ? 'Hide Paths' : 'Common Paths'}
               </button>
               <button
                 onClick={handleBrowseBrowser}
@@ -346,40 +226,42 @@ export default function Install() {
                 Browse...
               </button>
             </div>
-            {browserDetected && (
-              <div className={`mt-2 p-3 border rounded-md ${
-                browserDetected.found 
-                  ? 'bg-green-50 border-green-200' 
-                  : 'bg-yellow-50 border-yellow-200'
-              }`}>
-                <p className={`text-sm ${
-                  browserDetected.found ? 'text-green-800' : 'text-yellow-800'
-                }`}>
-                  {browserDetected.message}
-                </p>
-                {browserDetected.allPaths && (
-                  <div className="mt-2 text-xs">
-                    <p className="font-semibold mb-1">Common paths:</p>
+            {showCommonPaths && (
+              <div className="mt-2 p-4 border border-blue-200 rounded-md bg-blue-50">
+                <p className="text-sm font-semibold text-blue-900 mb-3">Common Browser Paths:</p>
+                <div className="space-y-4">
+                  <div>
+                    <p className="text-xs font-medium text-blue-800 mb-2">Chrome:</p>
                     <div className="space-y-1">
-                      <div>
-                        <span className="font-medium">Chrome:</span>
-                        <ul className="list-disc list-inside ml-2">
-                          {browserDetected.allPaths.chrome?.slice(0, 2).map((path, i) => (
-                            <li key={i} className="font-mono text-xs">{path}</li>
-                          ))}
-                        </ul>
-                      </div>
-                      <div>
-                        <span className="font-medium">Edge:</span>
-                        <ul className="list-disc list-inside ml-2">
-                          {browserDetected.allPaths.edge?.slice(0, 2).map((path, i) => (
-                            <li key={i} className="font-mono text-xs">{path}</li>
-                          ))}
-                        </ul>
-                      </div>
+                      {commonBrowserPaths.chrome.map((path, i) => (
+                        <button
+                          key={i}
+                          onClick={() => handleSelectCommonPath(path)}
+                          className="w-full text-left px-3 py-2 bg-white border border-blue-200 rounded hover:bg-blue-100 hover:border-blue-300 transition-colors"
+                        >
+                          <p className="text-xs font-mono text-gray-800">{path}</p>
+                        </button>
+                      ))}
                     </div>
                   </div>
-                )}
+                  <div>
+                    <p className="text-xs font-medium text-blue-800 mb-2">Edge:</p>
+                    <div className="space-y-1">
+                      {commonBrowserPaths.edge.map((path, i) => (
+                        <button
+                          key={i}
+                          onClick={() => handleSelectCommonPath(path)}
+                          className="w-full text-left px-3 py-2 bg-white border border-blue-200 rounded hover:bg-blue-100 hover:border-blue-300 transition-colors"
+                        >
+                          <p className="text-xs font-mono text-gray-800">{path}</p>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+                <p className="mt-3 text-xs text-blue-700">
+                  Click on a path above to select it, or manually enter your browser path.
+                </p>
               </div>
             )}
             {browserPath && !validateBrowserPath(browserPath).valid && (
@@ -468,35 +350,40 @@ export default function Install() {
             </div>
           )}
 
-          {/* Debug Mode Toggle */}
-          <div>
-            <label className="flex items-center">
-              <input
-                type="checkbox"
-                checked={debugMode}
-                onChange={(e) => setDebugMode(e.target.checked)}
-                className="mr-2"
-              />
-              <span className="text-sm text-gray-700">
-                Developer Mode (Download ZIP with Node.js, node_modules, and .bat script)
-              </span>
-            </label>
-            {debugMode && (
-              <p className="mt-1 text-xs text-gray-500">
-                For developers: Downloads a ZIP file with source code, Node.js binary, dependencies, and start_agent.bat
-              </p>
-            )}
+          {/* Developer Mode Info - Always enabled */}
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+            <div className="flex items-start">
+              <span className="text-2xl mr-3">💻</span>
+              <div>
+                <h3 className="font-semibold text-blue-900 mb-1">Developer Mode</h3>
+                <p className="text-sm text-blue-800">
+                  Download a ZIP file with source code, Node.js binary, dependencies, and start_agent.bat.
+                  Extract and run <code className="bg-blue-100 px-1 rounded">start_agent.bat</code> to start the agent.
+                </p>
+                <p className="text-xs text-blue-700 mt-2">
+                  <strong>Note:</strong> The agent will automatically register itself with the server when it starts,
+                  sending its installation directory. No need to specify it here.
+                </p>
+              </div>
+            </div>
           </div>
+          
+          {/* Hidden debug mode toggle - always true */}
+          <input type="hidden" value="true" />
 
           {/* Download Button */}
           <div>
             <button
               onClick={handleDownload}
-              disabled={loading || !installPath || !browserPath || !encryptionKey || !decryptionKey}
+              disabled={loading || !browserPath || !encryptionKey || !decryptionKey}
               className="w-full px-6 py-3 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed font-medium"
             >
-              {loading ? (debugMode ? 'Generating Developer ZIP...' : 'Generating Installer...') : (debugMode ? 'Download Developer ZIP' : 'Download Installer')}
+              {loading ? 'Generating Developer ZIP...' : 'Download Developer ZIP'}
             </button>
+            <p className="mt-2 text-xs text-gray-500 text-center">
+              Extract the ZIP and run <code className="bg-gray-100 px-1 rounded">start_agent.bat</code>. 
+              The agent will automatically register with the server.
+            </p>
           </div>
         </div>
 
@@ -504,19 +391,28 @@ export default function Install() {
         <div className="mt-8 bg-gray-50 rounded-lg p-6">
           <h2 className="text-xl font-semibold mb-4">Installation Instructions</h2>
           <ol className="list-decimal list-inside space-y-2 text-gray-700">
-            <li>Click "Download Installer" to download ABCDToolsSetup.exe</li>
-            <li>Run the installer (you may need administrator privileges)</li>
-            <li>Follow the installation wizard</li>
-            <li>The agent will start automatically after installation</li>
-            <li>You can now use abcdtools:// deep links to trigger the agent</li>
+            <li>Click "Download Developer ZIP" to download the agent package</li>
+            <li>Extract the ZIP file to any location on your computer</li>
+            <li>Open the extracted folder and run <code className="bg-gray-200 px-1 rounded">start_agent.bat</code></li>
+            <li>The agent will start and automatically register itself with the server</li>
+            <li>Check the <a href="/clients" className="text-blue-600 hover:underline">Clients page</a> to see your agent status</li>
+            <li>You can now add accounts and create posts!</li>
           </ol>
+
+          <h3 className="text-lg font-semibold mt-6 mb-2">How It Works</h3>
+          <ul className="list-disc list-inside space-y-1 text-gray-700">
+            <li>The agent automatically detects its installation directory (where you extracted the ZIP)</li>
+            <li>When the agent starts, it registers itself with the server and sends its installation path</li>
+            <li>The server stores this information and displays it on the Clients page</li>
+            <li>No manual configuration needed - everything is automatic!</li>
+          </ul>
 
           <h3 className="text-lg font-semibold mt-6 mb-2">Troubleshooting</h3>
           <ul className="list-disc list-inside space-y-1 text-gray-700">
-            <li>If installation fails, ensure you have administrator privileges</li>
             <li>Make sure Chrome or Edge is installed</li>
             <li>Check the logs folder for error messages</li>
             <li>Verify the API endpoint is accessible from your network</li>
+            <li>If the agent doesn't appear on the Clients page, check that it's running and connected</li>
           </ul>
         </div>
       </div>

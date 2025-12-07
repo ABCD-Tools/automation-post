@@ -43,7 +43,8 @@ export const config = {
   
   // Installation
   downloadToken: process.env.DOWNLOAD_TOKEN || '',
-  installPath: process.env.INSTALL_PATH || process.cwd(),
+  // Always use process.cwd() as installPath - this is where the agent is actually running from
+  installPath: process.cwd(),
   
   // Agent Version
   agentVersion: process.env.AGENT_VERSION || '1.0.0',

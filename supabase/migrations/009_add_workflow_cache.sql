@@ -39,6 +39,7 @@ GRANT ALL ON TABLE public.workflow_cache TO service_role;
 ALTER TABLE public.workflow_cache ENABLE ROW LEVEL SECURITY;
 
 -- RLS Policy: Users can view cache for their own clients
+DROP POLICY IF EXISTS "Users can view cache for their own clients" ON public.workflow_cache;
 CREATE POLICY "Users can view cache for their own clients"
     ON public.workflow_cache
     FOR SELECT

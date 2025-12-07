@@ -41,6 +41,7 @@ GRANT ALL ON TABLE public.client_logs TO service_role;
 ALTER TABLE public.client_logs ENABLE ROW LEVEL SECURITY;
 
 -- RLS Policy: Users can only view logs from their own clients
+DROP POLICY IF EXISTS "Users can view logs from their own clients" ON public.client_logs;
 CREATE POLICY "Users can view logs from their own clients"
     ON public.client_logs
     FOR SELECT

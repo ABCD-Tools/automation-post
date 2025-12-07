@@ -217,39 +217,81 @@ async function executeJob(job) {
  * Main polling loop
  */
 async function startPolling() {
-  logger.info('Starting polling loop...');
-  logger.info(`Polling interval: ${config.pollingInterval}ms`);
+  logger.info('═══════════════════════════════════════════════════════════');
+  logger.info('🔄 Starting polling loop...');
+  logger.info(`   Polling interval: ${config.pollingInterval}ms (${config.pollingInterval / 1000}s)`);
+  logger.info(`   Max jobs per cycle: ${config.maxJobsPerCycle}`);
+  logger.info(`   Idle timeout: ${config.idleTimeout}ms (${config.idleTimeout / 1000 / 60} minutes)`);
+  logger.info('═══════════════════════════════════════════════════════════\n');
   
   let lastJobTime = Date.now();
   let consecutiveEmptyPolls = 0;
+  let totalPolls = 0;
+  let totalJobsProcessed = 0;
+  const pollStartTime = Date.now();
   
   while (true) {
     try {
+      totalPolls++;
+      const pollCycleStart = Date.now();
+      
       // Send heartbeat
+      const heartbeatStart = Date.now();
       await sendHeartbeat();
+      const heartbeatDuration = Date.now() - heartbeatStart;
+      if (heartbeatDuration > 1000) {
+        logger.debug(`💓 Heartbeat sent (${heartbeatDuration}ms)`);
+      }
       
       // Poll for pending jobs
       const jobs = await pollPendingJobs();
+      const pollDuration = Date.now() - pollCycleStart;
       
       if (jobs.length > 0) {
-        logger.info(`Found ${jobs.length} pending job(s)`);
+        logger.info(`\n📦 Processing ${jobs.length} job(s) from queue`);
         lastJobTime = Date.now();
         consecutiveEmptyPolls = 0;
         
         // Process up to maxJobsPerCycle jobs
         const jobsToProcess = jobs.slice(0, config.maxJobsPerCycle);
+        const skippedJobs = jobs.length - jobsToProcess.length;
         
-        for (const job of jobsToProcess) {
-          await executeJob(job);
+        if (skippedJobs > 0) {
+          logger.info(`   ⚠️  ${skippedJobs} job(s) will be processed in next cycle (max ${config.maxJobsPerCycle} per cycle)`);
         }
+        
+        for (let i = 0; i < jobsToProcess.length; i++) {
+          const job = jobsToProcess[i];
+          logger.info(`\n   [${i + 1}/${jobsToProcess.length}] Processing job: ${job.id}`);
+          logger.info(`      Type: ${job.job_type || 'unknown'}, Status: ${job.status || 'queued'}`);
+          await executeJob(job);
+          totalJobsProcessed++;
+        }
+        
+        logger.info(`\n✅ Cycle complete: Processed ${jobsToProcess.length} job(s) in ${pollDuration}ms`);
       } else {
         consecutiveEmptyPolls++;
-        logger.debug('No pending jobs');
+        const idleTime = Date.now() - lastJobTime;
+        const idleMinutes = Math.floor(idleTime / 60000);
+        const idleSeconds = Math.floor((idleTime % 60000) / 1000);
+        
+        // Log every 10 polls or every minute
+        if (consecutiveEmptyPolls % 10 === 0 || pollDuration > 1000) {
+          logger.info(`🔍 Poll #${totalPolls}: No pending jobs (idle: ${idleMinutes}m ${idleSeconds}s, poll took ${pollDuration}ms)`);
+        } else {
+          logger.debug(`   Poll #${totalPolls}: No jobs available (${pollDuration}ms)`);
+        }
         
         // Check if idle timeout reached
-        const idleTime = Date.now() - lastJobTime;
         if (idleTime >= config.idleTimeout) {
-          logger.info('Idle timeout reached. Stopping agent...');
+          const totalUptime = Date.now() - pollStartTime;
+          const uptimeMinutes = Math.floor(totalUptime / 60000);
+          logger.info('\n═══════════════════════════════════════════════════════════');
+          logger.info('⏸️  Idle timeout reached. Stopping agent...');
+          logger.info(`   Total polls: ${totalPolls}`);
+          logger.info(`   Jobs processed: ${totalJobsProcessed}`);
+          logger.info(`   Uptime: ${uptimeMinutes} minutes`);
+          logger.info('═══════════════════════════════════════════════════════════');
           break;
         }
       }
@@ -258,7 +300,9 @@ async function startPolling() {
       await new Promise(resolve => setTimeout(resolve, config.pollingInterval));
       
     } catch (error) {
-      logger.error('Polling error:', error.message);
+      logger.error('\n❌ Polling error:', error.message);
+      logger.error('   Stack:', error.stack);
+      logger.info('   Retrying in next cycle...');
       // Wait before retrying
       await new Promise(resolve => setTimeout(resolve, config.pollingInterval));
     }
@@ -297,16 +341,27 @@ async function main() {
   }
   
   // Register client on first run (if download token exists)
+  logger.info('Checking client registration status...');
+  logger.debug(`Download token present: ${config.downloadToken ? 'Yes' : 'No'}`);
+  logger.debug(`Client ID present: ${config.clientId ? 'Yes' : 'No'}`);
+  logger.debug(`API URL: ${config.apiUrl}`);
+  
   if (config.downloadToken) {
-    logger.info('Registering client...');
+    logger.info('Download token found - attempting client registration...');
     const registration = await registerClient();
     if (!registration) {
       logger.warn('Client registration failed, but continuing...');
+    } else {
+      logger.info('Client registration completed successfully');
     }
   } else if (!config.clientId) {
     logger.error('CLIENT_ID is required. Please reinstall the agent.');
+    logger.error('No download token found and no CLIENT_ID configured.');
     removeLockFile();
     process.exit(1);
+  } else {
+    logger.info('No download token found, but CLIENT_ID exists - skipping registration');
+    logger.info('Client should already be registered. Continuing with existing client ID...');
   }
   
   // Handle graceful shutdown

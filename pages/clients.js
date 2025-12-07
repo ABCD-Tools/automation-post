@@ -1,15 +1,27 @@
 import { useState, useEffect } from "react";
+import { useRouter } from "next/router";
 import Sidebar from "./dashboard/sidebar";
 import DashboardNavbar from "@components/DashboardNavbar";
 import { getJson } from "@utils/api";
 import { toast } from "react-toastify";
 
 export default function Clients() {
+  const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [clients, setClients] = useState([]);
+  const [showDownloadSuccess, setShowDownloadSuccess] = useState(false);
 
   useEffect(() => {
+    // Check if user just downloaded the ZIP
+    if (typeof window !== 'undefined') {
+      const isDownloaded = localStorage.getItem('isDownloaded');
+      if (isDownloaded === 'true') {
+        setShowDownloadSuccess(true);
+        // Clear the flag
+        localStorage.removeItem('isDownloaded');
+      }
+    }
     fetchClients();
   }, []);
 
@@ -98,6 +110,31 @@ export default function Clients() {
             </div>
           )}
 
+          {/* Download Success Message */}
+          {showDownloadSuccess && (
+            <div className="bg-blue-50 border border-blue-200 text-blue-800 px-4 py-3 rounded mb-6">
+              <div className="flex items-start">
+                <span className="text-xl mr-2">✅</span>
+                <div className="flex-1">
+                  <p className="font-semibold mb-1">Developer ZIP Downloaded Successfully!</p>
+                  <p className="text-sm">
+                    Extract the ZIP file to any location, then run <code className="bg-blue-100 px-1 rounded">start_agent.bat</code>.
+                    The agent will automatically register itself with the server when it starts.
+                  </p>
+                  <p className="text-sm mt-2 font-medium">
+                    💡 <strong>Tip:</strong> Refresh this page after the installation is done to see your agent appear here.
+                  </p>
+                </div>
+                <button
+                  onClick={() => setShowDownloadSuccess(false)}
+                  className="ml-2 text-blue-600 hover:text-blue-800"
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Error State */}
           {!loading && error && (
             <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded mb-6">
@@ -110,15 +147,22 @@ export default function Clients() {
             <>
               {clients.length === 0 ? (
                 <div className="bg-white rounded-lg shadow-md p-8 text-center">
-                  <p className="text-gray-600 mb-4">No clients installed</p>
-                  <p className="text-sm text-gray-500">
-                    Install a client agent to start automating your posts
+                  <div className="text-6xl mb-4">📦</div>
+                  <h2 className="text-xl font-semibold text-gray-900 mb-2">
+                    No Agents Running
+                  </h2>
+                  <p className="text-gray-600 mb-4">
+                    Download and run the developer ZIP to start your agent
+                  </p>
+                  <p className="text-sm text-gray-500 mb-4">
+                    The agent will automatically register itself when it starts running.
+                    You don't need to manually specify the installation directory.
                   </p>
                   <a
                     href="/settings/install"
-                    className="inline-block mt-4 text-blue-600 hover:text-blue-700"
+                    className="inline-block mt-4 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
                   >
-                    Go to Installation →
+                    Download Developer ZIP →
                   </a>
                 </div>
               ) : (
@@ -126,7 +170,8 @@ export default function Clients() {
                   {clients.map((client) => (
                     <div
                       key={client.id || client.client_id}
-                      className="bg-white rounded-lg shadow-md p-6 hover:shadow-lg transition-shadow"
+                      onClick={() => router.push(`/clients/${client.id}`)}
+                      className="bg-white rounded-lg shadow-md p-6 hover:shadow-lg transition-shadow cursor-pointer"
                     >
                       <div className="flex items-start justify-between mb-4">
                         <div className="flex items-center space-x-3">

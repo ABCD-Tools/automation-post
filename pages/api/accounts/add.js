@@ -51,7 +51,7 @@ export default async function handler(req, res) {
       return res.status(401).json({ error: 'Unauthorized' });
     }
 
-    const { platform, username, encryptedPassword } = req.body || {};
+    const { platform, username, encryptedPassword, clientId } = req.body || {};
 
     if (!platform || !username || !encryptedPassword) {
       return res.status(400).json({ 
@@ -59,16 +59,22 @@ export default async function handler(req, res) {
       });
     }
 
+    if (!clientId) {
+      return res.status(400).json({ 
+        error: 'Client ID is required. Please select a client when adding an account.' 
+      });
+    }
+
     const result = await addAccount(user.id, {
       platform,
       username,
       encryptedPassword,
+      clientId,
     });
 
     return res.status(200).json({
-      message: 'Account added successfully. Verification job created.',
+      message: 'Account added successfully.',
       account: result.account,
-      verificationJob: result.verificationJob,
     });
   } catch (err) {
     console.error('Add account error:', err);

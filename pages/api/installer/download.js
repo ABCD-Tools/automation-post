@@ -109,6 +109,8 @@ export default async function handler(req, res) {
           userAgent: req.headers['user-agent'],
           ipAddress: req.headers['x-forwarded-for'] || req.connection.remoteAddress,
           clientId: clientId, // Store in metadata for reference, but don't set as FK yet
+          encryptionKey: encryptionKey, // Store encryption key for later retrieval (encrypted)
+          decryptionKey: decryptionKey, // Store decryption key for later retrieval (encrypted)
         },
       })
       .select()
@@ -123,6 +125,7 @@ export default async function handler(req, res) {
     let buildResult;
     if (debugMode === true) {
       console.log('Building developer ZIP for user:', user.id);
+      console.log('[DEBUG] Download token for developer ZIP:', downloadToken ? 'Present' : 'Missing');
       buildResult = await buildDeveloperZip({
         apiEndpoint,
         apiToken,
@@ -131,6 +134,7 @@ export default async function handler(req, res) {
         decryptionKey,
         browserPath,
         installPath,
+        downloadToken,
       });
     } else {
       console.log('Building installer for user:', user.id);
