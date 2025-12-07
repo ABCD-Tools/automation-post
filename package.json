@@ -5,6 +5,7 @@
   "_comment_visual_recording_dependencies": "Visual recording requires these packages: html2canvas (element screenshots), pixelmatch (image comparison), tesseract.js (OCR fallback, ~2MB, optional for MVP), jimp (image processing), fuse.js (fuzzy text matching). For MVP, start with html2canvas + pixelmatch. Keep puppeteer-core (not full puppeteer) for browser automation.",
   "scripts": {
     "dev": "next dev",
+    "prebuild": "node scripts/build-agent-template.js",
     "build": "next build",
     "start": "next start",
     "lint": "eslint . --ext js,jsx,ts,tsx",
@@ -65,7 +66,12 @@
       "bcrypt",
       "core-js",
       "tesseract.js",
-      "unrs-resolver"
+      "unrs-resolver",
+      "@scarf/scarf",
+      "@tree-sitter-grammars/tree-sitter-yaml",
+      "core-js-pure",
+      "tree-sitter",
+      "tree-sitter-json"
     ]
   }
 }

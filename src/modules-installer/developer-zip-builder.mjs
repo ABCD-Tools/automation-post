@@ -224,15 +224,133 @@ export async function buildDeveloperZip(config) {
   try {
     // Step 1: Copy modules-agents and modules-client
     console.log('[1/5] Copying modules...');
-    const agentsSourceDir = path.join(__dirname, '../modules-agents');
-    const agentsDestDir = path.join(buildDir, 'modules-agents');
-    await copyDirectory(agentsSourceDir, agentsDestDir);
-    console.log('   ✓ modules-agents copied');
     
+    // Task 4: Diagnostic logging
+    console.log('[DEBUG] __dirname:', __dirname);
+    console.log('[DEBUG] process.cwd():', process.cwd());
+    
+    // Check if pre-built template exists (Task 7 approach)
+    const templatePath = path.join(process.cwd(), 'public', 'agent-template.zip');
+    const templateExists = await fs.access(templatePath).then(() => true).catch(() => false);
+    
+    if (templateExists) {
+      console.log('[DEBUG] Found pre-built agent template, using template approach...');
+      console.log('[DEBUG] Template path:', templatePath);
+      
+      // Use pre-built template approach (Task 7)
+      const customZipPath = path.join(buildDir, 'ABCDTools-Developer.zip');
+      
+      // Copy template to build directory
+      await fs.copyFile(templatePath, customZipPath);
+      console.log('   ✓ Agent template copied');
+      
+      // Add custom .env to existing ZIP
+      const zip = new AdmZip(customZipPath);
+      const envContent = `# ABCD Tools Client Configuration
+# DO NOT share this file with anyone!
+
+# API Connection
+CLIENT_API_URL=${apiEndpoint}
+CLIENT_ID=${clientId}
+API_TOKEN=${apiToken}
+
+# Local Encryption Keys (NEVER sent to server)
+ENCRYPTION_KEY=${encryptionKey}
+DECRYPTION_KEY=${decryptionKey}
+
+# Browser Configuration
+BROWSER_PATH=${browserPath}
+
+# Optional: Advanced Settings
+LOG_LEVEL=info
+POLLING_INTERVAL=10000
+MAX_JOBS_PER_CYCLE=5
+IDLE_TIMEOUT=300000
+
+# Installation
+INSTALL_PATH=${installPath}
+
+# Agent Version
+AGENT_VERSION=1.0.0
+`;
+      zip.addFile('.env', Buffer.from(envContent, 'utf-8'));
+      zip.writeZip(customZipPath);
+      console.log('   ✓ Custom .env injected into template');
+      
+      // Skip to Step 5 (creating error.log and finalizing)
+      console.log('\n[5/5] Creating error.log...');
+      const errorLogPath = path.join(buildDir, 'error.log');
+      await fs.writeFile(errorLogPath, '', 'utf-8');
+      console.log('   ✓ error.log created');
+      
+      return {
+        success: true,
+        zipPath: customZipPath,
+        buildDir,
+      };
+    }
+    
+    // Fallback: Try to copy source files (with diagnostics)
+    console.log('[DEBUG] Template not found, attempting to copy source files...');
+    const agentsSourceDir = path.join(__dirname, '../modules-agents');
     const clientSourceDir = path.join(__dirname, '../modules-client');
-    const clientDestDir = path.join(buildDir, 'modules-client');
-    await copyDirectory(clientSourceDir, clientDestDir);
-    console.log('   ✓ modules-client copied');
+    
+    console.log('[DEBUG] Resolved agents source path:', agentsSourceDir);
+    console.log('[DEBUG] Resolved client source path:', clientSourceDir);
+    
+    // Check if source paths exist
+    try {
+      const agentsExists = await fs.access(agentsSourceDir).then(() => true).catch(() => false);
+      const clientExists = await fs.access(clientSourceDir).then(() => true).catch(() => false);
+      
+      console.log('[DEBUG] Agents source exists?', agentsExists);
+      console.log('[DEBUG] Client source exists?', clientExists);
+      
+      if (!agentsExists || !clientExists) {
+        // List deployment structure for debugging
+        console.log('[DEBUG] Listing deployment structure:');
+        console.log('[DEBUG] process.cwd():', process.cwd());
+        try {
+          const cwdContents = await fs.readdir(process.cwd());
+          console.log('[DEBUG] Contents of cwd:', cwdContents.slice(0, 20));
+        } catch (e) {
+          console.log('[DEBUG] Cannot read cwd:', e.message);
+        }
+        
+        const possiblePaths = [
+          path.join(process.cwd(), '.next', 'server'),
+          path.join(process.cwd(), 'dist'),
+          '/var/task',
+          '/var/task/src',
+          path.join(process.cwd(), 'src'),
+        ];
+        
+        for (const p of possiblePaths) {
+          try {
+            const exists = await fs.access(p).then(() => true).catch(() => false);
+            if (exists) {
+              const contents = await fs.readdir(p);
+              console.log(`[DEBUG] Found: ${p}`, contents.slice(0, 10));
+            }
+          } catch (e) {
+            // Ignore
+          }
+        }
+        
+        throw new Error(`Source directories not found. Agents: ${agentsExists}, Client: ${clientExists}. Please ensure agent-template.zip is built during deployment.`);
+      }
+      
+      const agentsDestDir = path.join(buildDir, 'modules-agents');
+      await copyDirectory(agentsSourceDir, agentsDestDir);
+      console.log('   ✓ modules-agents copied');
+      
+      const clientDestDir = path.join(buildDir, 'modules-client');
+      await copyDirectory(clientSourceDir, clientDestDir);
+      console.log('   ✓ modules-client copied');
+    } catch (error) {
+      console.error('[ERROR] Failed to copy source files:', error.message);
+      throw error;
+    }
 
     // Step 2: Create package.json for dependencies
     console.log('\n[2/5] Creating package.json...');
