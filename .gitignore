@@ -8,6 +8,9 @@
 # But keep the example file
 !.env.example
 
+# Info folders - documentation not to be pushed
+info/
+
 # Markdown files (except in docs/ and README.md)
 *.md
 !README.md
@@ -67,7 +70,6 @@ next-env.d.ts
 
 # OS generated files
 Thumbs.db
-.DS_Store
 .AppleDouble
 .LSOverride
 Desktop.ini
