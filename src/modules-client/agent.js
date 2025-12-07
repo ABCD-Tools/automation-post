@@ -14,7 +14,7 @@ import { logger } from './logger.js';
 import { pollPendingJobs, sendHeartbeat, updateJobStatus, registerClient, pingApi, checkClientRegistration } from './poller.js';
 import { WorkflowExecutor } from './workflow-executor.js';
 import puppeteer from 'puppeteer-core';
-import { PLATFORM_CONFIG } from '../modules-recorder/config/platform.mjs';
+import { PLATFORM_CONFIG } from '../modules-agents/platforms/platform.js';
 // Browser finder - will be available as browser.mjs in bundled package
 // package.js copies browser.mjs to the bundled directory
 // Try local import first (bundled), fallback to source (development)
