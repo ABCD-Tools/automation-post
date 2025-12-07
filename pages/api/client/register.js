@@ -133,6 +133,22 @@ export default async function handler(req, res) {
         }
       }
 
+      // If downloadToken provided and encryption_key is missing, try to get it from installer_downloads
+      if (downloadToken && !existingClient.encryption_key) {
+        console.log('[DEBUG] Encryption key missing, attempting to retrieve from installer_downloads...');
+        const { data: downloadRecord, error: downloadRecordError } = await supabase
+          .from('installer_downloads')
+          .select('metadata')
+          .eq('download_token', downloadToken)
+          .eq('user_id', existingClient.user_id)
+          .single();
+
+        if (!downloadRecordError && downloadRecord?.metadata?.encryptionKey) {
+          updateData.encryption_key = downloadRecord.metadata.encryptionKey;
+          console.log('[DEBUG] Retrieved ENCRYPTION_KEY from installer_downloads');
+        }
+      }
+
       // Update existing client
       const { data: updatedClient, error: updateError } = await supabase
         .from('clients')
@@ -218,16 +234,33 @@ export default async function handler(req, res) {
         .eq('download_token', downloadToken)
         .single();
 
+      let encryptionKey = null;
       let encryptedEncryptionKey = null;
       if (!downloadRecordError && downloadRecord?.metadata?.encryptionKey) {
-        // Encrypt the encryption key with user's auth token (if available)
-        // For now, we'll store it in a way that can be retrieved later
-        // The actual encryption will happen when the web UI requests it
-        const encryptionKey = downloadRecord.metadata.encryptionKey;
+        encryptionKey = downloadRecord.metadata.encryptionKey;
         
-        // Store a placeholder - the actual encryption will be done when requested
-        // This is a temporary solution - in production, encrypt it here with a user-specific key
-        encryptedEncryptionKey = encryptionKey; // TODO: Encrypt with user-specific key
+        // Encrypt the encryption key with user's auth token for web UI use
+        // This is used when the web UI needs to encrypt accounts
+        const authToken = req.headers.authorization?.replace('Bearer ', '') || '';
+        if (authToken) {
+          // Derive encryption key from auth token
+          const sessionKey = crypto
+            .createHash('sha256')
+            .update(authToken + userId)
+            .digest('hex');
+
+          // Encrypt the client's encryption key with the session key
+          const iv = crypto.randomBytes(16);
+          const cipher = crypto.createCipheriv('aes-256-cbc', Buffer.from(sessionKey, 'hex').slice(0, 32), iv);
+          let encrypted = cipher.update(encryptionKey, 'utf8', 'hex');
+          encrypted += cipher.final('hex');
+
+          // Combine IV and encrypted data
+          encryptedEncryptionKey = iv.toString('hex') + ':' + encrypted;
+        } else {
+          // If no auth token, store plain (will be encrypted later when requested)
+          encryptedEncryptionKey = encryptionKey;
+        }
       }
 
       const { error: updateError } = await supabase
@@ -246,11 +279,23 @@ export default async function handler(req, res) {
         console.log('[DEBUG] installer_downloads updated successfully');
       }
 
-      // Store encrypted encryption key in clients table
+      // Store encryption key in clients table (both plain and encrypted versions)
+      const clientUpdateData = {};
+      if (encryptionKey) {
+        // Store plain encryption_key for server-side use (never exposed to client)
+        clientUpdateData.encryption_key = encryptionKey;
+        console.log('[DEBUG] Storing ENCRYPTION_KEY in clients table');
+      }
       if (encryptedEncryptionKey) {
+        // Store encrypted version for web UI use
+        clientUpdateData.encrypted_encryption_key = encryptedEncryptionKey;
+        console.log('[DEBUG] Storing encrypted_encryption_key in clients table');
+      }
+      
+      if (Object.keys(clientUpdateData).length > 0) {
         await supabase
           .from('clients')
-          .update({ encrypted_encryption_key: encryptedEncryptionKey })
+          .update(clientUpdateData)
           .eq('id', newClient.id);
       }
     }

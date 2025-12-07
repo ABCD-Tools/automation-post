@@ -238,6 +238,26 @@ export async function updateAccount(userId, accountId, accountData) {
   if (accountData.encryptedCookies !== undefined) {
     updateData.encrypted_cookies = accountData.encryptedCookies;
   }
+  if (accountData.clientId !== undefined) {
+    // If clientId is provided, verify it exists and belongs to user
+    if (accountData.clientId) {
+      const { data: client, error: clientError } = await supabase
+        .from('clients')
+        .select('client_id')
+        .eq('id', accountData.clientId)
+        .eq('user_id', userId)
+        .single();
+      
+      if (clientError || !client) {
+        throw new Error('Client not found or access denied');
+      }
+      
+      updateData.client_id = client.client_id; // Store client_id string, not UUID
+    } else {
+      // Allow setting client_id to null
+      updateData.client_id = null;
+    }
+  }
 
   if (Object.keys(updateData).length === 0) {
     throw new Error('No valid fields to update');

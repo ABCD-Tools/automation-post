@@ -41,17 +41,21 @@ import { getAccount, updateAccount, deleteAccount } from '@modules-logic/service
  *     requestBody:
  *       content:
  *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               username:
- *                 type: string
- *               encryptedPassword:
- *                 type: string
- *               status:
- *                 type: string
- *               encryptedCookies:
- *                 type: string
+     *           schema:
+     *             type: object
+     *             properties:
+     *               username:
+     *                 type: string
+     *               encryptedPassword:
+     *                 type: string
+     *               status:
+     *                 type: string
+     *               encryptedCookies:
+     *                 type: string
+     *               clientId:
+     *                 type: string
+     *                 format: uuid
+     *                 description: Client ID (UUID) to link account to
  *     responses:
  *       200:
  *         description: Account updated successfully

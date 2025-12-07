@@ -1,13 +1,9 @@
 import { useState, useEffect } from "react";
 import Sidebar from "./dashboard/sidebar";
 import DashboardNavbar from "@components/DashboardNavbar";
-import { getJson, postJson, deleteJson } from "@utils/api";
+import { getJson, postJson, deleteJson } from "@modules-view/utils/api";
 import { toast } from "react-toastify";
-import { 
-  encryptAccountPassword, 
-  encryptAccountPasswordWithClientKey,
-  decryptClientEncryptionKey 
-} from "@modules-view/utils/encryption";
+// Encryption is now handled server-side, no need to import encryption utilities
 
 export default function Accounts() {
   const [loading, setLoading] = useState(true);
@@ -16,6 +12,9 @@ export default function Accounts() {
   const [clients, setClients] = useState([]);
   const [showAddModal, setShowAddModal] = useState(false);
   const [adding, setAdding] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [editingAccount, setEditingAccount] = useState(null);
   const [filters, setFilters] = useState({ platform: "", status: "" });
 
   const [newAccount, setNewAccount] = useState({
@@ -76,42 +75,20 @@ export default function Accounts() {
     try {
       setAdding(true);
       
-      // Get client encryption key
-      const authToken = localStorage.getItem('auth_token') || sessionStorage.getItem('auth_token');
-      if (!authToken) {
-        throw new Error('Authentication required. Please log in again.');
+      // Encrypt password server-side using client's ENCRYPTION_KEY
+      // This eliminates the need for browser to handle encryption keys
+      const encryptResponse = await postJson(`/api/clients/${newAccount.clientId}/encrypt-password`, {
+        password: newAccount.password,
+      });
+
+      if (!encryptResponse.encryptedPassword) {
+        throw new Error('Failed to encrypt password');
       }
-
-      // Get user ID from token (simplified - in production, decode JWT properly)
-      const userResponse = await getJson('/api/auth/me');
-      const userId = userResponse.id;
-      if (!userId) {
-        throw new Error('Unable to get user ID');
-      }
-
-      // Get encrypted encryption key from server
-      const keyResponse = await getJson(`/api/clients/${newAccount.clientId}/encryption-key`);
-      if (!keyResponse.encryptedKey) {
-        throw new Error('Failed to get client encryption key');
-      }
-
-      // Decrypt client encryption key
-      const clientEncryptionKey = await decryptClientEncryptionKey(
-        keyResponse.encryptedKey,
-        authToken,
-        userId
-      );
-
-      // Encrypt password using client's encryption key
-      const encryptedPassword = await encryptAccountPasswordWithClientKey(
-        newAccount.password,
-        clientEncryptionKey
-      );
       
       const response = await postJson("/api/accounts/add", {
         platform: newAccount.platform,
         username: newAccount.username,
-        encryptedPassword: encryptedPassword,
+        encryptedPassword: encryptResponse.encryptedPassword,
         clientId: newAccount.clientId,
       });
 
@@ -123,6 +100,65 @@ export default function Accounts() {
       toast.error(err.message || "Failed to add account");
     } finally {
       setAdding(false);
+    }
+  };
+
+  const handleEdit = (account) => {
+    // Find the client ID (UUID) from the client_id string
+    const client = clients.find(c => c.client_id === account.client_id);
+    setEditingAccount({
+      id: account.id,
+      platform: account.platform,
+      username: account.username,
+      password: "", // Don't show existing password
+      clientId: client?.id || "",
+    });
+    setShowEditModal(true);
+  };
+
+  const handleUpdateAccount = async (e) => {
+    e.preventDefault();
+    if (!editingAccount.username) {
+      toast.error("Please fill in all required fields");
+      return;
+    }
+
+    if (!editingAccount.clientId) {
+      toast.error("Please select a client");
+      return;
+    }
+
+    try {
+      setEditing(true);
+      
+      const updateData = {
+        username: editingAccount.username,
+        clientId: editingAccount.clientId,
+      };
+
+      // Only update password if it was changed
+      if (editingAccount.password) {
+        // Encrypt password server-side using client's ENCRYPTION_KEY
+        const encryptResponse = await postJson(`/api/clients/${editingAccount.clientId}/encrypt-password`, {
+          password: editingAccount.password,
+        });
+
+        if (!encryptResponse.encryptedPassword) {
+          throw new Error('Failed to encrypt password');
+        }
+
+        updateData.encryptedPassword = encryptResponse.encryptedPassword;
+      }
+
+      await postJson(`/api/accounts/${editingAccount.id}`, updateData, 'PUT');
+      toast.success("Account updated successfully");
+      setShowEditModal(false);
+      setEditingAccount(null);
+      fetchAccounts();
+    } catch (err) {
+      toast.error(err.message || "Failed to update account");
+    } finally {
+      setEditing(false);
     }
   };
 
@@ -314,6 +350,12 @@ export default function Accounts() {
                           Login
                         </button>
                         <button
+                          onClick={() => handleEdit(account)}
+                          className="flex-1 bg-green-600 hover:bg-green-700 text-white px-3 py-2 rounded text-sm transition-colors"
+                        >
+                          Edit
+                        </button>
+                        <button
                           onClick={() => handleDelete(account.id)}
                           className="flex-1 bg-red-600 hover:bg-red-700 text-white px-3 py-2 rounded text-sm transition-colors"
                         >
@@ -325,6 +367,113 @@ export default function Accounts() {
                 </div>
               )}
             </>
+          )}
+
+          {/* Edit Account Modal */}
+          {showEditModal && editingAccount && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+              <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+                <h2 className="text-2xl font-bold text-gray-900 mb-4">
+                  Edit Account
+                </h2>
+                <form onSubmit={handleUpdateAccount}>
+                  <div className="mb-4">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Client <span className="text-red-500">*</span>
+                    </label>
+                    <select
+                      value={editingAccount.clientId}
+                      onChange={(e) =>
+                        setEditingAccount({ ...editingAccount, clientId: e.target.value })
+                      }
+                      className="w-full border border-gray-300 rounded px-3 py-2"
+                      required
+                    >
+                      <option value="">Select a client...</option>
+                      {clients.map((client) => (
+                        <option key={client.id} value={client.id}>
+                          {client.client_name || client.client_id} {client.status === 'online' ? '🟢' : ''}
+                        </option>
+                      ))}
+                    </select>
+                    {clients.length === 0 && (
+                      <p className="text-xs text-gray-500 mt-1">
+                        No clients available. Please install a client agent first.
+                      </p>
+                    )}
+                  </div>
+                  <div className="mb-4">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Platform
+                    </label>
+                    <select
+                      value={editingAccount.platform}
+                      onChange={(e) =>
+                        setEditingAccount({ ...editingAccount, platform: e.target.value })
+                      }
+                      className="w-full border border-gray-300 rounded px-3 py-2"
+                      required
+                      disabled
+                    >
+                      <option value="instagram">Instagram</option>
+                      <option value="facebook">Facebook</option>
+                      <option value="twitter">Twitter</option>
+                    </select>
+                    <p className="text-xs text-gray-500 mt-1">
+                      Platform cannot be changed after creation
+                    </p>
+                  </div>
+                  <div className="mb-4">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Username
+                    </label>
+                    <input
+                      type="text"
+                      value={editingAccount.username}
+                      onChange={(e) =>
+                        setEditingAccount({ ...editingAccount, username: e.target.value })
+                      }
+                      className="w-full border border-gray-300 rounded px-3 py-2"
+                      required
+                    />
+                  </div>
+                  <div className="mb-4">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Password (leave blank to keep current)
+                    </label>
+                    <input
+                      type="password"
+                      value={editingAccount.password}
+                      onChange={(e) =>
+                        setEditingAccount({ ...editingAccount, password: e.target.value })
+                      }
+                      className="w-full border border-gray-300 rounded px-3 py-2"
+                      placeholder="Enter new password (optional)"
+                    />
+                  </div>
+                  <div className="flex gap-3">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowEditModal(false);
+                        setEditingAccount(null);
+                      }}
+                      className="flex-1 border border-gray-300 text-gray-700 px-4 py-2 rounded hover:bg-gray-50 transition-colors"
+                      disabled={editing}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      className="flex-1 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded transition-colors"
+                      disabled={editing}
+                    >
+                      {editing ? "Updating..." : "Update Account"}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
           )}
 
           {/* Add Account Modal */}
