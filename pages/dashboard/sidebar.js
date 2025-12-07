@@ -2,6 +2,7 @@ import { useRouter } from "next/router";
 import { useState, useEffect } from "react";
 import { toast } from "react-toastify";
 import { postJson } from "@utils/api";
+import Image from "next/image";
 
 const Sidebar = () => {
   const router = useRouter();
@@ -68,18 +69,22 @@ const Sidebar = () => {
 
   return (
     <div className="fixed top-0 left-0 z-50 w-full md:w-56 h-screen bg-dark">
-      <p className="text-3xl font-semibold text-light px-2 pt-4">AutoPost</p>
+      <div
+        className="flex gap-2 items-center mt-2 ms-5"
+      >
+        <Image src="/icon0.svg" alt="ABCD Tools" width={50} height={50} />
+        <h1 className="text-xl font-bold text-light">ABCD-Tools</h1>
+      </div>
       <section className="flex flex-col mt-10 justify-end items-end text-light px-2 space-y-5">
         {sidelinks.map((i, index) => {
           const isActive = router.pathname === i.href;
           return (
             <button
               onClick={() => handleNavigation(i.href)}
-              className={`w-full text-right px-4 py-2 rounded transition-colors ${
-                isActive
+              className={`w-full text-right px-4 py-2 rounded transition-colors ${isActive
                   ? "bg-light/20 text-light font-semibold"
                   : "text-light/70 hover:text-light hover:bg-light/10"
-              }`}
+                }`}
               key={index}
             >
               {i.label}

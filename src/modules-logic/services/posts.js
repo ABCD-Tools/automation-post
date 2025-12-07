@@ -1,4 +1,5 @@
 import { createSupabaseServiceRoleClient } from '@modules-view/utils/supabase.js';
+import { populateMicroActions, convertWorkflowToActions } from '@modules-logic/utils/workflow-converter.js';
 
 const supabase = createSupabaseServiceRoleClient();
 
@@ -218,7 +219,7 @@ export async function createPost(userId, postData) {
     // Verify all target accounts belong to user
     const { data: accounts, error: accountsError } = await supabase
       .from('accounts')
-      .select('id')
+      .select('id, platform')
       .eq('user_id', userId)
       .in('id', accountIds);
 
@@ -231,8 +232,148 @@ export async function createPost(userId, postData) {
     }
   }
 
-  // Build content object
+  // Get platform from target accounts (use first account's platform)
+  // For now, we assume all target accounts are from the same platform
+  // TODO: Support multiple platforms by creating separate jobs per platform
+  const { data: targetAccountsData, error: targetAccountsError } = await supabase
+    .from('accounts')
+    .select('platform')
+    .eq('user_id', userId)
+    .in('id', accountIds)
+    .limit(1);
+
+  if (targetAccountsError || !targetAccountsData || targetAccountsData.length === 0) {
+    throw new Error('Failed to determine platform from target accounts');
+  }
+
+  const platform = targetAccountsData[0].platform;
+
+  // Find post workflow for this platform
+  const { data: workflows, error: workflowError } = await supabase
+    .from('workflows')
+    .select('*')
+    .eq('platform', platform)
+    .eq('type', 'post')
+    .eq('is_active', true)
+    .order('created_at', { ascending: false })
+    .limit(1);
+
+  if (workflowError) {
+    throw new Error(`Failed to find post workflow: ${workflowError.message}`);
+  }
+
+  if (!workflows || workflows.length === 0) {
+    throw new Error(`No post workflow found for platform: ${platform}. Please create a post workflow first.`);
+  }
+
+  let postWorkflow = workflows[0];
+
+  // Parse steps if it's a string (JSONB fields might be returned as strings)
+  if (postWorkflow.steps && typeof postWorkflow.steps === 'string') {
+    try {
+      postWorkflow.steps = JSON.parse(postWorkflow.steps);
+    } catch (parseError) {
+      throw new Error(`Failed to parse workflow steps: ${parseError.message}`);
+    }
+  }
+
+  // Populate micro_actions in workflow steps
+  if (postWorkflow.steps && Array.isArray(postWorkflow.steps)) {
+    const microActionIds = postWorkflow.steps
+      .map((step) => step.micro_action_id)
+      .filter(Boolean);
+
+    if (microActionIds.length > 0) {
+      const { data: microActions, error: microActionsError } = await supabase
+        .from('micro_actions')
+        .select('id, name, type, platform, params')
+        .in('id', microActionIds);
+
+      if (microActionsError) {
+        throw new Error(`Failed to load micro-actions: ${microActionsError.message}`);
+      }
+
+      // Populate micro_actions in steps
+      postWorkflow = populateMicroActions(postWorkflow, microActions || []);
+    }
+  }
+
+  // Check if post workflow requires auth and load auth workflow if needed
+  let authWorkflowActions = [];
+  if (postWorkflow.requires_auth && postWorkflow.auth_workflow_id) {
+    // Load auth workflow by ID
+    const { data: authWorkflows, error: authWorkflowError } = await supabase
+      .from('workflows')
+      .select('*')
+      .eq('id', postWorkflow.auth_workflow_id)
+      .eq('is_active', true)
+      .single();
+
+    if (authWorkflowError || !authWorkflows) {
+      throw new Error(`Failed to load auth workflow: ${authWorkflowError?.message || 'Auth workflow not found'}`);
+    }
+
+    let authWorkflow = authWorkflows;
+
+    // Parse steps if it's a string
+    if (authWorkflow.steps && typeof authWorkflow.steps === 'string') {
+      try {
+        authWorkflow.steps = JSON.parse(authWorkflow.steps);
+      } catch (parseError) {
+        throw new Error(`Failed to parse auth workflow steps: ${parseError.message}`);
+      }
+    }
+
+    // Populate micro_actions in auth workflow steps
+    if (authWorkflow.steps && Array.isArray(authWorkflow.steps)) {
+      const authMicroActionIds = authWorkflow.steps
+        .map((step) => step.micro_action_id)
+        .filter(Boolean);
+
+      if (authMicroActionIds.length > 0) {
+        const { data: authMicroActions, error: authMicroActionsError } = await supabase
+          .from('micro_actions')
+          .select('id, name, type, platform, params')
+          .in('id', authMicroActionIds);
+
+        if (authMicroActionsError) {
+          throw new Error(`Failed to load auth workflow micro-actions: ${authMicroActionsError.message}`);
+        }
+
+        // Populate micro_actions in auth workflow steps
+        authWorkflow = populateMicroActions(authWorkflow, authMicroActions || []);
+      }
+    }
+
+    // Convert auth workflow to actions format
+    const convertedAuthWorkflow = convertWorkflowToActions(authWorkflow);
+    authWorkflowActions = convertedAuthWorkflow.actions || [];
+  }
+
+  // Convert post workflow from database format (steps) to execution format (actions)
+  const convertedPostWorkflow = convertWorkflowToActions(postWorkflow);
+  const postWorkflowActions = convertedPostWorkflow.actions || [];
+
+  // Combine workflows: auth actions first, then post actions
+  const combinedActions = [...authWorkflowActions, ...postWorkflowActions];
+  
+  // Create combined workflow object
+  const combinedWorkflow = {
+    id: postWorkflow.id,
+    name: postWorkflow.name,
+    platform: postWorkflow.platform,
+    type: postWorkflow.type,
+    description: postWorkflow.description,
+    actions: combinedActions,
+  };
+
+  // Build content object with workflow and post data
+  // The workflow will be used by the client agent to execute the post
+  // Template variables like {{caption}} and {{image_url}} can be used in workflow actions
   const content = {
+    workflow_id: postWorkflow.id,
+    workflow: combinedWorkflow, // Store combined workflow with auth + post actions
+    platform: platform,
     caption,
     image_url,
   };
