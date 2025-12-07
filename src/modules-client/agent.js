@@ -133,31 +133,31 @@ function handleDeepLink() {
 async function configureViewport(page, platform) {
   const platformConfig = PLATFORM_CONFIG[platform] || PLATFORM_CONFIG.default;
   
-  if (platformConfig.useMobileViewport) {
-    logger.info(`📱 Configuring mobile viewport for ${platform}`);
-    await page.emulate({
-      name: 'iPhone 12',
-      viewport: {
-        width: 390,
-        height: 844,
-        deviceScaleFactor: 3,
-        isMobile: true,
-        hasTouch: true,
-      },
-      userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 14_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0 Mobile/15E148 Safari/604.1',
-    });
+  // if (platformConfig.useMobileViewport) {
+  //   logger.info(`📱 Configuring mobile viewport for ${platform}`);
+  //   await page.emulate({
+  //     name: 'iPhone 12',
+  //     viewport: {
+  //       width: 390,
+  //       height: 844,
+  //       deviceScaleFactor: 3,
+  //       isMobile: true,
+  //       hasTouch: true,
+  //     },
+  //     userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 14_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0 Mobile/15E148 Safari/604.1',
+  //   });
     
-    // Verify viewport was set correctly
-    const viewport = await page.viewport();
-    logger.info(`   Viewport set to: ${viewport.width}x${viewport.height} (mobile)`);
-  } else {
+  //   // Verify viewport was set correctly
+  //   const viewport = await page.viewport();
+  //   logger.info(`   Viewport set to: ${viewport.width}x${viewport.height} (mobile)`);
+  // } else {
     logger.info(`🖥️  Configuring desktop viewport for ${platform}`);
     await page.setViewport({ width: 1280, height: 720 });
     
     // Verify viewport was set correctly
     const viewport = await page.viewport();
     logger.info(`   Viewport set to: ${viewport.width}x${viewport.height} (desktop)`);
-  }
+  // }
 }
 
 /**
