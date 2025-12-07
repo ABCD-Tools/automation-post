@@ -291,3 +291,83 @@ export async function deleteAccount(userId, accountId) {
 
   return { success: true, accountId };
 }
+
+/**
+ * Login to an account using auth workflow
+ * @param {string} userId - Supabase auth user ID
+ * @param {string} accountId - Account ID to login
+ * @returns {Promise<Object>} Login job object
+ */
+export async function loginAccount(userId, accountId) {
+  // Verify account belongs to user
+  const { data: account, error: accountError } = await supabase
+    .from('accounts')
+    .select('*')
+    .eq('id', accountId)
+    .eq('user_id', userId)
+    .single();
+
+  if (accountError || !account) {
+    throw new Error('Account not found or access denied');
+  }
+
+  // Find auth workflow for this platform
+  const { data: workflows, error: workflowError } = await supabase
+    .from('workflows')
+    .select('*')
+    .eq('platform', account.platform)
+    .eq('type', 'auth')
+    .eq('is_active', true)
+    .order('created_at', { ascending: false })
+    .limit(1);
+
+  if (workflowError) {
+    throw new Error(`Failed to find auth workflow: ${workflowError.message}`);
+  }
+
+  if (!workflows || workflows.length === 0) {
+    throw new Error(`No auth workflow found for platform: ${account.platform}. Please create an auth workflow first.`);
+  }
+
+  const authWorkflow = workflows[0];
+
+  // Update account status to pending_verification (will be updated to active on success)
+  const { error: updateError } = await supabase
+    .from('accounts')
+    .update({ status: 'pending_verification' })
+    .eq('id', accountId);
+
+  if (updateError) {
+    throw new Error(`Failed to update account status: ${updateError.message}`);
+  }
+
+  // Create login job with auth workflow
+  // The job content will contain the workflow and account info
+  // The client will decrypt the password and execute the workflow
+  const { data: job, error: jobError } = await supabase
+    .from('jobs')
+    .insert({
+      user_id: userId,
+      job_type: 'auth',
+      status: 'queued',
+      content: {
+        workflow_id: authWorkflow.id,
+        workflow: authWorkflow,
+        account_id: accountId,
+        platform: account.platform,
+        username: account.username,
+        // Note: encrypted_password is stored in accounts table
+        // Client will fetch it and decrypt using its encryption key
+      },
+      target_accounts: [accountId],
+      expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(), // 7 days
+    })
+    .select()
+    .single();
+
+  if (jobError) {
+    throw new Error(`Failed to create login job: ${jobError.message}`);
+  }
+
+  return job;
+}

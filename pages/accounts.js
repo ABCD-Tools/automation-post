@@ -140,6 +140,19 @@ export default function Accounts() {
     }
   };
 
+  const handleLogin = async (accountId) => {
+    try {
+      const response = await postJson(`/api/accounts/${accountId}/login`, {});
+      toast.success("Login job created successfully. The account will be tested shortly.");
+      // Refresh accounts to show updated status
+      setTimeout(() => {
+        fetchAccounts();
+      }, 1000);
+    } catch (err) {
+      toast.error(err.message || "Failed to create login job");
+    }
+  };
+
   const getStatusColor = (status) => {
     switch (status) {
       case "active":
@@ -294,6 +307,12 @@ export default function Accounts() {
                       </div>
 
                       <div className="flex gap-2">
+                        <button
+                          onClick={() => handleLogin(account.id)}
+                          className="flex-1 bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded text-sm transition-colors"
+                        >
+                          Login
+                        </button>
                         <button
                           onClick={() => handleDelete(account.id)}
                           className="flex-1 bg-red-600 hover:bg-red-700 text-white px-3 py-2 rounded text-sm transition-colors"
