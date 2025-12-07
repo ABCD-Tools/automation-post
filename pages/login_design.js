@@ -63,7 +63,7 @@ export default function Login() {
           </button>
           <div className="w-full flex items-center justify-between px-3">
             <label className="text-xs flex items-center justify-start gap-2">
-              <input type="checkbox" name="" id="" />
+              <input type="checkbox" name="" id="" className=""/>
               Remember me
             </label>
             <p className="text-xs flex items-center justify-start gap-2">
