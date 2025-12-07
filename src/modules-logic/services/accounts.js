@@ -385,15 +385,10 @@ export async function loginAccount(userId, accountId) {
   // Convert workflow from database format (steps) to execution format (actions)
   const convertedWorkflow = convertWorkflowToActions(authWorkflow);
 
-  // Update account status to pending_verification (will be updated to active on success)
-  const { error: updateError } = await supabase
-    .from('accounts')
-    .update({ status: 'pending_verification' })
-    .eq('id', accountId);
-
-  if (updateError) {
-    throw new Error(`Failed to update account status: ${updateError.message}`);
-  }
+  // MVP: No need to change status for verification
+  // Keep account status as-is (typically 'active')
+  // last_verified_at field is preserved in schema for future use
+  // Note: Status will be updated by the job processor if needed
 
   // Create login job with auth workflow
   // The job content will contain the workflow (converted to actions format) and account info

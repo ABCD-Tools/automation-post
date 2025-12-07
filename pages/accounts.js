@@ -41,7 +41,11 @@ export default function Accounts() {
       const response = await getJson(
         `/api/accounts/list${queryString ? `?${queryString}` : ""}`
       );
-      setAccounts(response.accounts || []);
+      // MVP: Filter out pending_verification accounts from display
+      const filteredAccounts = (response.accounts || []).filter(
+        (acc) => acc.status !== "pending_verification"
+      );
+      setAccounts(filteredAccounts);
     } catch (err) {
       setError(err.message || "Failed to load accounts");
       toast.error(err.message || "Failed to load accounts");
@@ -272,7 +276,7 @@ export default function Accounts() {
             >
               <option value="">All Statuses</option>
               <option value="active">Active</option>
-              <option value="pending_verification">Pending Verification</option>
+              {/* MVP: Hide pending_verification status */}
               <option value="login_failed">Login Failed</option>
               <option value="needs_reauth">Needs Re-auth</option>
             </select>

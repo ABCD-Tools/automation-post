@@ -168,7 +168,7 @@ export async function deletePost(userId, postId) {
  * @param {Object} postData - Post data
  * @param {string} postData.caption - Post caption (max 2200 characters)
  * @param {string} postData.image_url - Cloudinary image URL
- * @param {Array<string>} postData.target_accounts - Array of account IDs (optional, defaults to all active)
+ * @param {Array<string>} postData.target_accounts - Array of account IDs (optional, defaults to all available accounts)
  * @param {string} postData.scheduled_for - Optional scheduled time (ISO string)
  * @returns {Promise<Object>} Created post (job) object
  */
@@ -190,23 +190,29 @@ export async function createPost(userId, postData) {
     throw new Error('Invalid image URL format');
   }
 
-  // Get target accounts - if not provided, get all active accounts for user
+  // MVP: Get target accounts - if not provided, get all available accounts (no verification check)
+  // Just exclude pending_verification and locked accounts
   let accountIds = target_accounts;
   if (!accountIds || accountIds.length === 0) {
     const { data: accounts, error: accountsError } = await supabase
       .from('accounts')
-      .select('id')
+      .select('id, status, locked_until')
       .eq('user_id', userId)
-      .eq('status', 'active');
+      .neq('status', 'pending_verification');
 
     if (accountsError) {
       throw new Error(`Failed to fetch accounts: ${accountsError.message}`);
     }
 
-    accountIds = accounts?.map((acc) => acc.id) || [];
+    // Filter out locked accounts (accounts that are currently locked)
+    const now = new Date();
+    const availableAccounts = (accounts || []).filter(
+      (acc) => !acc.locked_until || new Date(acc.locked_until) < now
+    );
+    accountIds = availableAccounts?.map((acc) => acc.id) || [];
     
     if (accountIds.length === 0) {
-      throw new Error('No active accounts found. Please add an account first.');
+      throw new Error('No available accounts found. Please add an account first.');
     }
   } else {
     // Verify all target accounts belong to user

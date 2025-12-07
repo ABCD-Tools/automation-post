@@ -25,7 +25,16 @@ export default function CreatePost() {
     try {
       const response = await getJson("/api/accounts/list");
       const accounts = response.accounts || [];
-      setAvailableAccounts(accounts.filter((acc) => acc.status === "active"));
+      // MVP: Show all available accounts (no verification check needed)
+      // Previously: accounts.filter((acc) => acc.status === "active")
+      // Just filter out pending_verification and locked accounts
+      setAvailableAccounts(
+        accounts.filter(
+          (acc) =>
+            acc.status !== "pending_verification" &&
+            !acc.locked_until
+        )
+      );
     } catch (err) {
       console.error("Failed to load accounts:", err);
       toast.error("Failed to load accounts");
@@ -245,7 +254,7 @@ export default function CreatePost() {
               {availableAccounts.length > 0 && (
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Target Accounts (leave empty to post to all active accounts)
+                    Target Accounts (leave empty to post to all available accounts)
                   </label>
                   <div className="space-y-2 max-h-48 overflow-y-auto border border-gray-200 rounded-lg p-4">
                     {availableAccounts.map((account) => (
