@@ -85,28 +85,58 @@ export default async function handler(req, res) {
       console.warn('[WARN] No download token provided');
     }
 
+    // Get API token from Authorization header if provided
+    let apiTokenFromHeader = null;
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      apiTokenFromHeader = authHeader.substring(7); // Remove 'Bearer ' prefix
+    }
+
     // Check if client already exists
     console.log('[DEBUG] Checking if client already exists...');
     const { data: existingClient, error: checkError } = await supabase
       .from('clients')
-      .select('id, user_id')
+      .select('id, user_id, api_token')
       .eq('client_id', clientId)
-      .single();
+      .maybeSingle();
+
+    if (checkError && checkError.code !== 'PGRST116') {
+      // PGRST116 is "not found" which is fine, other errors are not
+      console.error('[ERROR] Error checking client existence:', checkError);
+      return res.status(500).json({ error: 'Database error while checking client' });
+    }
 
     if (existingClient) {
       console.log('[DEBUG] Client exists, updating...');
+      
+      // Prepare update data
+      const updateData = {
+        install_path: installPath,
+        browser_path: browserPath,
+        platform: platform,
+        agent_version: agentVersion,
+        status: 'online',
+        last_seen: new Date().toISOString(),
+        last_heartbeat: new Date().toISOString(),
+      };
+
+      // If client provided an API token in the header, update it in the database
+      // This ensures the database token matches what the client has in its .env file
+      if (apiTokenFromHeader) {
+        if (existingClient.api_token !== apiTokenFromHeader) {
+          console.log('[DEBUG] Updating API token to match client\'s .env file');
+          updateData.api_token = apiTokenFromHeader;
+          // Reset token expiration when updating token
+          updateData.token_expires_at = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString();
+        } else {
+          console.log('[DEBUG] API token matches, no update needed');
+        }
+      }
+
       // Update existing client
       const { data: updatedClient, error: updateError } = await supabase
         .from('clients')
-        .update({
-          install_path: installPath,
-          browser_path: browserPath,
-          platform: platform,
-          agent_version: agentVersion,
-          status: 'online',
-          last_seen: new Date().toISOString(),
-          last_heartbeat: new Date().toISOString(),
-        })
+        .update(updateData)
         .eq('client_id', clientId)
         .select()
         .single();
@@ -134,15 +164,16 @@ export default async function handler(req, res) {
       });
     }
 
-    // Get API token from installer_downloads or generate new one
+    // Get API token: prefer from Authorization header, otherwise generate new one
     let apiToken = null;
-    if (downloadToken) {
-      // Get API token from the download record's metadata or generate
-      // For now, we'll need to store it during installer creation
-      // This is a simplified version - in production, store token securely
-      apiToken = `sk_${crypto.randomBytes(32).toString('hex')}`;
+    if (apiTokenFromHeader) {
+      // Use the token from the client's .env file
+      apiToken = apiTokenFromHeader;
+      console.log('[DEBUG] Using API token from client\'s Authorization header');
     } else {
+      // Generate new token if client didn't provide one
       apiToken = `sk_${crypto.randomBytes(32).toString('hex')}`;
+      console.log('[DEBUG] Generated new API token');
     }
 
     console.log('[DEBUG] Creating new client record...');
@@ -158,6 +189,7 @@ export default async function handler(req, res) {
         os_version: process.platform || 'windows',
         status: 'online',
         api_token: apiToken,
+        token_expires_at: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString(), // 90 days from now
         installed_at: new Date().toISOString(),
         last_seen: new Date().toISOString(),
         last_heartbeat: new Date().toISOString(),
