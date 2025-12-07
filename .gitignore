@@ -83,3 +83,4 @@ recordings/
 .temp/
 .tmp/
 public/agent-template.zip
+prompt.txt

@@ -31,12 +31,40 @@ export async function decrypt(encryptedData, privateKeyPem, debugLogger = null) 
   }
 
   try {
-    log.debug(`   Decrypt input: encryptedData length=${encryptedData.length} chars, privateKey length=${privateKeyPem.length} chars`);
+    // Normalize private key - ensure proper newlines for PEM format
+    // dotenv may not preserve newlines correctly when reading from .env
+    let normalizedKey = privateKeyPem;
+    
+    // Replace escaped newlines
+    normalizedKey = normalizedKey.replace(/\\n/g, '\n');
+    
+    // If key is missing newlines but has BEGIN/END markers, try to fix it
+    if (normalizedKey.includes('-----BEGIN') && normalizedKey.includes('-----END')) {
+      // Check if newlines are missing between BEGIN and content
+      if (!normalizedKey.includes('\n')) {
+        // Try to reconstruct: BEGIN on its own line, content, END on its own line
+        normalizedKey = normalizedKey
+          .replace(/-----BEGIN PRIVATE KEY-----/g, '-----BEGIN PRIVATE KEY-----\n')
+          .replace(/-----END PRIVATE KEY-----/g, '\n-----END PRIVATE KEY-----')
+          .replace(/(.{64})/g, '$1\n') // Add newlines every 64 chars (PEM standard)
+          .replace(/\n\n+/g, '\n') // Remove duplicate newlines
+          .trim();
+      }
+    }
+    
+    log.debug(`   Decrypt input: encryptedData length=${encryptedData.length} chars, privateKey length=${normalizedKey.length} chars`);
+    log.debug(`   Private key first 100 chars: ${normalizedKey.substring(0, 100).replace(/\n/g, '\\n')}`);
     
     // Validate private key format
-    if (!privateKeyPem.includes('-----BEGIN PRIVATE KEY-----')) {
+    if (!normalizedKey.includes('-----BEGIN PRIVATE KEY-----')) {
       log.error(`   Invalid private key format: expected PEM format with 'BEGIN PRIVATE KEY'`);
+      log.error(`   Key preview: ${normalizedKey.substring(0, 100)}`);
       throw new Error('Invalid private key format. Expected RSA private key in PEM format.');
+    }
+    
+    // Verify key has proper structure
+    if (!normalizedKey.includes('\n')) {
+      log.warn(`   ⚠️  Private key appears to be missing newlines - attempting to fix...`);
     }
     
     // Decode from base64
@@ -70,7 +98,7 @@ export async function decrypt(encryptedData, privateKeyPem, debugLogger = null) 
 
       // 1. Decrypt AES key with RSA private key
       log.debug(`   Decrypting AES key with RSA private key...`);
-      const privateKey = crypto.createPrivateKey(privateKeyPem);
+      const privateKey = crypto.createPrivateKey(normalizedKey);
       const aesKey = crypto.privateDecrypt(
         {
           key: privateKey,
@@ -92,7 +120,7 @@ export async function decrypt(encryptedData, privateKeyPem, debugLogger = null) 
       // Direct RSA decryption
       log.debug(`   Detected direct RSA encryption`);
       
-      const privateKey = crypto.createPrivateKey(privateKeyPem);
+      const privateKey = crypto.createPrivateKey(normalizedKey);
       const decryptedBuffer = crypto.privateDecrypt(
         {
           key: privateKey,

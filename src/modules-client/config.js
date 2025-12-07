@@ -20,6 +20,33 @@ if (existsSync(envPath)) {
 }
 
 /**
+ * Normalize PEM key format - ensure proper newlines
+ * Handles keys that may have been stored with escaped newlines or without proper formatting
+ * @param {string} key - PEM key string
+ * @returns {string} Normalized PEM key with proper newlines
+ */
+function normalizePEMKey(key) {
+  if (!key) return '';
+  
+  // If already properly formatted, return as-is
+  if (key.includes('\n') && key.includes('-----BEGIN') && key.includes('-----END')) {
+    return key;
+  }
+  
+  // Replace escaped newlines
+  key = key.replace(/\\n/g, '\n');
+  
+  // If key doesn't have newlines but has BEGIN/END markers, try to reconstruct
+  if (key.includes('-----BEGIN') && key.includes('-----END') && !key.includes('\n')) {
+    // This shouldn't happen with proper PEM format, but handle it
+    key = key.replace(/-----BEGIN/g, '\n-----BEGIN').replace(/-----END/g, '-----END\n');
+  }
+  
+  // Ensure proper line endings
+  return key.trim();
+}
+
+/**
  * Client configuration loaded from .env
  */
 export const config = {
@@ -29,8 +56,9 @@ export const config = {
   clientId: process.env.CLIENT_ID || '',
   
   // Encryption Keys (local only, never sent to server)
-  encryptionKey: process.env.ENCRYPTION_KEY || '',
-  decryptionKey: process.env.DECRYPTION_KEY || '',
+  // Normalize PEM keys - dotenv may not preserve newlines correctly
+  encryptionKey: normalizePEMKey(process.env.ENCRYPTION_KEY || ''),
+  decryptionKey: normalizePEMKey(process.env.DECRYPTION_KEY || ''),
   
   // Browser Configuration
   browserPath: process.env.BROWSER_PATH || '',

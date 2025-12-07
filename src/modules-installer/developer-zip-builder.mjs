@@ -377,6 +377,15 @@ AGENT_VERSION=1.0.0
 
     // Step 3: Create .env file
     console.log('\n[3/5] Creating .env file...');
+    
+    // Escape newlines in PEM keys for .env file format
+    // dotenv can handle multi-line values, but we'll escape them to be safe
+    const escapeEnvValue = (value) => {
+      if (!value) return '';
+      // Replace actual newlines with escaped newlines for .env compatibility
+      return value.replace(/\n/g, '\\n');
+    };
+    
     const envContent = `# ABCD Tools Client Configuration
 # DO NOT share this file with anyone!
 
@@ -386,8 +395,9 @@ CLIENT_ID=${clientId}
 API_TOKEN=${apiToken}
 
 # Local Encryption Keys (NEVER sent to server)
-ENCRYPTION_KEY=${encryptionKey}
-DECRYPTION_KEY=${decryptionKey}
+# Note: Keys are in PEM format with escaped newlines (\\n)
+ENCRYPTION_KEY=${escapeEnvValue(encryptionKey)}
+DECRYPTION_KEY=${escapeEnvValue(decryptionKey)}
 
 # Browser Configuration
 BROWSER_PATH=${browserPath}
