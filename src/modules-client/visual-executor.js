@@ -64,6 +64,12 @@ export class VisualActionExecutor {
     console.log(`▶️  Executing: ${action.name || action.type}`);
 
     try {
+      // Special handling for upload actions - bypass visual matching
+      // Just find any file input on the page and use setInputFiles directly
+      if (action.type === 'upload') {
+        return await this.handleUploadAction(action);
+      }
+
       let result = null;
 
       // Support both formats: new format (visual/backup_selector at top level) and old format (in params)
@@ -123,6 +129,155 @@ export class VisualActionExecutor {
   }
 
   /**
+   * Handle upload action - find file input and set file directly
+   * This bypasses visual matching and just searches for any file input on the page
+   * @param {Object} action - Upload action
+   * @returns {Promise<Object>} Execution result
+   */
+  async handleUploadAction(action) {
+    console.log('📤 Upload action: Searching for file input element...');
+    
+    // Check multiple locations for filePath (top level, params, or imagePath alias)
+    const filePath = action.filePath || action.params?.filePath || action.params?.imagePath || action.imagePath || '';
+    if (!filePath) {
+      return { success: false, method: 'upload', error: 'No filePath provided for upload action' };
+    }
+    
+    // Check if filePath is a URL (starts with http:// or https://)
+    let localFilePath = filePath;
+    if (filePath.startsWith('http://') || filePath.startsWith('https://')) {
+      console.log(`📥 Downloading file from URL: ${filePath}`);
+      try {
+        // Download file from URL to temporary location
+        localFilePath = await this.downloadFileFromUrl(filePath);
+        console.log(`✅ File downloaded to: ${localFilePath}`);
+      } catch (error) {
+        return { success: false, method: 'upload', error: `Failed to download file: ${error.message}` };
+      }
+    }
+    
+    // Verify file exists
+    if (!fs.existsSync(localFilePath)) {
+      return { success: false, method: 'upload', error: `File not found: ${localFilePath}` };
+    }
+    
+    // Wait a bit for modal/dialog to appear (Instagram opens modal after clicking "Post")
+    console.log('⏳ Waiting for upload modal to appear...');
+    await this.page.waitForTimeout(1500);
+    
+    // Find ANY file input on the page (including hidden ones)
+    // Instagram and other sites often hide the file input and use a button to trigger it
+    // Instagram has multiple file inputs (one for avif/jpeg/png, one for jpeg only)
+    let fileInput = null;
+    let attempts = 0;
+    const maxAttempts = 3;
+    
+    // Determine file extension to match accept attribute
+    const fileExt = path.extname(localFilePath).toLowerCase().replace('.', '');
+    const mimeTypeMap = {
+      'jpg': 'image/jpeg',
+      'jpeg': 'image/jpeg',
+      'png': 'image/png',
+      'avif': 'image/avif',
+      'webp': 'image/webp'
+    };
+    const fileMimeType = mimeTypeMap[fileExt] || 'image/jpeg';
+    
+    while (!fileInput && attempts < maxAttempts) {
+      const fileInputHandle = await this.page.evaluateHandle((preferredMimeType) => {
+        // Find all file inputs on the page (including hidden ones)
+        const fileInputs = Array.from(document.querySelectorAll('input[type="file"]'));
+        
+        if (fileInputs.length === 0) {
+          return null;
+        }
+        
+        // Try to find one that matches the file type (check accept attribute)
+        for (const input of fileInputs) {
+          const accept = input.getAttribute('accept') || '';
+          // Check if accept attribute includes our file type
+          if (accept && accept.includes(preferredMimeType)) {
+            console.log(`✅ Found file input matching ${preferredMimeType}: accept="${accept}"`);
+            return input;
+          }
+        }
+        
+        // If no match, prefer visible ones first, but accept hidden ones too
+        for (const input of fileInputs) {
+          const style = window.getComputedStyle(input);
+          const rect = input.getBoundingClientRect();
+          // Accept if visible OR if hidden but in the DOM
+          // Hidden inputs often have display:none but are still functional
+          if (style.display !== 'none' || rect.width > 0 || rect.height > 0) {
+            console.log(`✅ Found file input (visible or functional)`);
+            return input;
+          }
+        }
+        
+        // If no visible ones, return the first one (even if hidden)
+        // Instagram often has multiple hidden file inputs - prefer the one with broader accept
+        const sortedInputs = fileInputs.sort((a, b) => {
+          const aAccept = a.getAttribute('accept') || '';
+          const bAccept = b.getAttribute('accept') || '';
+          // Prefer inputs with more accept types (broader)
+          return bAccept.split(',').length - aAccept.split(',').length;
+        });
+        
+        console.log(`✅ Using first available file input (${fileInputs.length} total found)`);
+        return sortedInputs[0];
+      }, fileMimeType);
+      
+      fileInput = fileInputHandle.asElement();
+      
+      if (!fileInput) {
+        attempts++;
+        if (attempts < maxAttempts) {
+          console.log(`⚠️  File input not found (attempt ${attempts}/${maxAttempts}), waiting and retrying...`);
+          await this.page.waitForTimeout(1000);
+        }
+      } else {
+        // Log which input we found
+        const acceptAttr = await fileInput.evaluate(el => el.getAttribute('accept') || 'none');
+        console.log(`📎 Selected file input with accept="${acceptAttr}"`);
+      }
+    }
+    
+    if (!fileInput) {
+      return { success: false, method: 'upload', error: 'No file input element found on page after multiple attempts' };
+    }
+    
+    // Use setInputFiles to set the file directly (avoids opening file picker)
+    try {
+      console.log('✅ Found file input, setting file...');
+      await fileInput.setInputFiles(localFilePath);
+      console.log('✅ File set successfully via setInputFiles');
+      
+      // Wait a moment to ensure the file is processed
+      await this.page.waitForTimeout(500);
+      
+      // Clean up temporary file if it was downloaded
+      if (filePath.startsWith('http://') || filePath.startsWith('https://')) {
+        // Don't delete immediately - wait a bit in case upload is still processing
+        setTimeout(() => {
+          try {
+            if (fs.existsSync(localFilePath)) {
+              fs.unlinkSync(localFilePath);
+              console.log(`🧹 Cleaned up temporary file: ${localFilePath}`);
+            }
+          } catch (err) {
+            // Ignore cleanup errors
+            console.warn(`⚠️  Could not clean up temp file: ${err.message}`);
+          }
+        }, 10000); // 10 seconds
+      }
+      
+      return { success: true, method: 'upload' };
+    } catch (error) {
+      return { success: false, method: 'upload', error: `Failed to set file: ${error.message}` };
+    }
+  }
+
+  /**
    * Try to find and execute action using backup selector (fast path)
    * Verifies element text matches recorded text if text exists
    * @param {Object} action - Action to execute
@@ -173,43 +328,9 @@ export class VisualActionExecutor {
         await element.type(textValue, { delay: 50 });
         return { success: true, method: 'selector' };
       } else if (action.type === 'upload') {
-        // Handle file upload - use setInputFiles instead of clicking
-        // Check multiple locations for filePath (top level, params, or imagePath alias)
-        const filePath = action.filePath || action.params?.filePath || action.params?.imagePath || action.imagePath || '';
-        if (!filePath) {
-          return { success: false, method: 'selector', error: 'No filePath provided for upload action' };
-        }
-        
-        // Check if filePath is a URL (starts with http:// or https://)
-        let localFilePath = filePath;
-        if (filePath.startsWith('http://') || filePath.startsWith('https://')) {
-          // Download file from URL to temporary location
-          localFilePath = await this.downloadFileFromUrl(filePath);
-        }
-        
-        // Verify file exists
-        if (!fs.existsSync(localFilePath)) {
-          return { success: false, method: 'selector', error: `File not found: ${localFilePath}` };
-        }
-        
-        // Use setInputFiles to set the file directly (avoids opening file picker)
-        await element.setInputFiles(localFilePath);
-        
-        // Clean up temporary file if it was downloaded
-        if (filePath.startsWith('http://') || filePath.startsWith('https://')) {
-          // Don't delete immediately - wait a bit in case upload is still processing
-          setTimeout(() => {
-            try {
-              if (fs.existsSync(localFilePath)) {
-                fs.unlinkSync(localFilePath);
-              }
-            } catch (err) {
-              // Ignore cleanup errors
-            }
-          }, 5000);
-        }
-        
-        return { success: true, method: 'selector' };
+        // Upload actions are handled at the top level in executeAction
+        // This should not be reached, but handle it just in case
+        return await this.handleUploadAction(action);
       }
 
       return { success: false, method: 'selector', error: 'Unsupported action type' };
@@ -632,134 +753,9 @@ export class VisualActionExecutor {
           return { success: true, method: 'visual' };
         }
       } else if (action.type === 'upload') {
-        // Handle file upload - find file input element and use setInputFiles
-        const elementHandle = await this.page.evaluateHandle(
-          (pos) => document.elementFromPoint(pos.x, pos.y),
-          candidate.position.absolute
-        );
-        
-        const element = elementHandle.asElement();
-        if (!element) {
-          return { success: false, method: 'visual', error: 'Could not find element at position' };
-        }
-        
-        // Verify it's a file input
-        const tagName = await element.evaluate(el => el.tagName);
-        const inputType = await element.evaluate(el => el.type || '');
-        if (tagName !== 'INPUT' || inputType !== 'file') {
-          // Try to find a file input nearby
-          const fileInput = await this.page.evaluateHandle(
-            (pos) => {
-              const element = document.elementFromPoint(pos.x, pos.y);
-              if (!element) return null;
-              
-              // Check if element itself is a file input
-              if (element.tagName === 'INPUT' && element.type === 'file') {
-                return element;
-              }
-              
-              // Check parent elements
-              let parent = element.parentElement;
-              for (let i = 0; i < 3 && parent; i++) {
-                if (parent.tagName === 'INPUT' && parent.type === 'file') {
-                  return parent;
-                }
-                parent = parent.parentElement;
-              }
-              
-              // Search for file input in the same container
-              const container = element.closest('form, div, section');
-              if (container) {
-                const fileInputs = container.querySelectorAll('input[type="file"]');
-                if (fileInputs.length > 0) {
-                  return fileInputs[0];
-                }
-              }
-              
-              return null;
-            },
-            candidate.position.absolute
-          );
-          
-          if (fileInput && fileInput.asElement()) {
-            // Check multiple locations for filePath (top level, params, or imagePath alias)
-            const filePath = action.filePath || action.params?.filePath || action.params?.imagePath || action.imagePath || '';
-            if (!filePath) {
-              return { success: false, method: 'visual', error: 'No filePath provided for upload action' };
-            }
-            
-            // Check if filePath is a URL (starts with http:// or https://)
-            let localFilePath = filePath;
-            if (filePath.startsWith('http://') || filePath.startsWith('https://')) {
-              // Download file from URL to temporary location
-              localFilePath = await this.downloadFileFromUrl(filePath);
-            }
-            
-            // Verify file exists
-            if (!fs.existsSync(localFilePath)) {
-              return { success: false, method: 'visual', error: `File not found: ${localFilePath}` };
-            }
-            
-            // Use setInputFiles to set the file directly (avoids opening file picker)
-            await fileInput.asElement().setInputFiles(localFilePath);
-            
-            // Clean up temporary file if it was downloaded
-            if (filePath.startsWith('http://') || filePath.startsWith('https://')) {
-              // Don't delete immediately - wait a bit in case upload is still processing
-              setTimeout(() => {
-                try {
-                  if (fs.existsSync(localFilePath)) {
-                    fs.unlinkSync(localFilePath);
-                  }
-                } catch (err) {
-                  // Ignore cleanup errors
-                }
-              }, 5000);
-            }
-            
-            return { success: true, method: 'visual' };
-          } else {
-            return { success: false, method: 'visual', error: 'Could not find file input element' };
-          }
-        } else {
-          // Element is already a file input
-          // Check multiple locations for filePath (top level, params, or imagePath alias)
-          const filePath = action.filePath || action.params?.filePath || action.params?.imagePath || action.imagePath || '';
-          if (!filePath) {
-            return { success: false, method: 'visual', error: 'No filePath provided for upload action' };
-          }
-          
-          // Check if filePath is a URL (starts with http:// or https://)
-          let localFilePath = filePath;
-          if (filePath.startsWith('http://') || filePath.startsWith('https://')) {
-            // Download file from URL to temporary location
-            localFilePath = await this.downloadFileFromUrl(filePath);
-          }
-          
-          // Verify file exists
-          if (!fs.existsSync(localFilePath)) {
-            return { success: false, method: 'visual', error: `File not found: ${localFilePath}` };
-          }
-          
-          // Use setInputFiles to set the file directly (avoids opening file picker)
-          await element.setInputFiles(localFilePath);
-          
-          // Clean up temporary file if it was downloaded
-          if (filePath.startsWith('http://') || filePath.startsWith('https://')) {
-            // Don't delete immediately - wait a bit in case upload is still processing
-            setTimeout(() => {
-              try {
-                if (fs.existsSync(localFilePath)) {
-                  fs.unlinkSync(localFilePath);
-                }
-              } catch (err) {
-                // Ignore cleanup errors
-              }
-            }, 5000);
-          }
-          
-          return { success: true, method: 'visual' };
-        }
+        // Upload actions are handled at the top level in executeAction
+        // This should not be reached, but handle it just in case
+        return await this.handleUploadAction(action);
       }
 
       return { success: false, method: 'visual', error: 'Could not execute on candidate' };
