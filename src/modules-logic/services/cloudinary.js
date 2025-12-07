@@ -1,18 +1,22 @@
 import crypto from 'crypto';
 
-const ensureEnv = (key) => {
-  const value = process.env[key];
-  if (!value) {
-    throw new Error(`Missing Cloudinary environment variable: ${key}`);
-  }
-  return value;
-};
+const getConfig = () => {
+  const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
+  const apiKey = process.env.CLOUDINARY_API_KEY;
+  const apiSecret = process.env.CLOUDINARY_API_SECRET;
 
-const getConfig = () => ({
-  cloudName: ensureEnv('CLOUDINARY_CLOUD_NAME'),
-  apiKey: ensureEnv('CLOUDINARY_API_KEY'),
-  apiSecret: ensureEnv('CLOUDINARY_API_SECRET'),
-});
+  if (!cloudName) {
+    throw new Error('Missing Cloudinary environment variable: CLOUDINARY_CLOUD_NAME');
+  }
+  if (!apiKey) {
+    throw new Error('Missing Cloudinary environment variable: CLOUDINARY_API_KEY');
+  }
+  if (!apiSecret) {
+    throw new Error('Missing Cloudinary environment variable: CLOUDINARY_API_SECRET');
+  }
+
+  return { cloudName, apiKey, apiSecret };
+};
 
 const normalizeParams = (params) => {
   return Object.entries(params).reduce((acc, [key, value]) => {
