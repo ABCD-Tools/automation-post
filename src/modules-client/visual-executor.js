@@ -129,8 +129,117 @@ export class VisualActionExecutor {
   }
 
   /**
+   * Helper method to wait (replaces page.waitForTimeout for compatibility)
+   * @param {number} ms - Milliseconds to wait
+   * @returns {Promise<void>}
+   */
+  async wait(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
+  /**
+   * Wait for modal to appear and return modal element
+   * @param {number} timeout - Maximum time to wait in milliseconds
+   * @returns {Promise<Object|null>} Modal element handle or null
+   */
+  async waitForModal(timeout = 5000) {
+    const startTime = Date.now();
+    
+    while (Date.now() - startTime < timeout) {
+      const modal = await this.page.evaluateHandle(() => {
+        // Check for modals by various methods
+        const modals = [
+          ...document.querySelectorAll('[role="dialog"]'),
+          ...document.querySelectorAll('[aria-modal="true"]'),
+          ...document.querySelectorAll('dialog'),
+        ];
+        
+        // Also check for common modal class patterns
+        const modalSelectors = [
+          '[class*="modal"]',
+          '[class*="dialog"]',
+          '[class*="overlay"]',
+          '[id*="modal"]',
+          '[id*="dialog"]',
+        ];
+        
+        for (const selector of modalSelectors) {
+          try {
+            const elements = document.querySelectorAll(selector);
+            for (const el of elements) {
+              const style = window.getComputedStyle(el);
+              // Check if visible (not display:none)
+              if (style.display !== 'none' && el.offsetParent !== null) {
+                modals.push(el);
+              }
+            }
+          } catch (e) {
+            // Ignore selector errors
+          }
+        }
+        
+        // Return the first visible modal
+        for (const modal of modals) {
+          const style = window.getComputedStyle(modal);
+          const rect = modal.getBoundingClientRect();
+          if (style.display !== 'none' && rect.width > 0 && rect.height > 0) {
+            return modal;
+          }
+        }
+        
+        return null;
+      });
+      
+      if (modal && modal.asElement()) {
+        console.log('📦 Modal detected');
+        return modal;
+      }
+      
+      await this.wait(200); // Check every 200ms
+    }
+    
+    return null;
+  }
+
+  /**
+   * Check if element is inside a modal
+   * @param {Object} elementHandle - Puppeteer element handle
+   * @returns {Promise<boolean>} True if element is in a modal
+   */
+  async isInModal(elementHandle) {
+    if (!elementHandle || !elementHandle.asElement()) {
+      return false;
+    }
+    
+    return await this.page.evaluate((el) => {
+      if (!el) return false;
+      
+      // Check if element or any parent is a modal
+      let current = el;
+      while (current && current !== document.body) {
+        const isModal = 
+          current.getAttribute?.('role') === 'dialog' ||
+          current.getAttribute?.('aria-modal') === 'true' ||
+          current.tagName === 'DIALOG' ||
+          (current.className && /modal|dialog|overlay/i.test(current.className)) ||
+          (current.id && /modal|dialog/i.test(current.id));
+        
+        if (isModal) {
+          return true;
+        }
+        
+        current = current.parentElement;
+      }
+      
+      return false;
+    }, elementHandle);
+  }
+
+  /**
    * Handle upload action - find file input and set file directly
    * This bypasses visual matching and just searches for any file input on the page
+   * Note: On mobile viewports (like iPhone 12 Pro), Instagram opens native file picker
+   * instead of a modal, so we try to find the file input immediately without waiting for modal
    * @param {Object} action - Upload action
    * @returns {Promise<Object>} Execution result
    */
@@ -161,16 +270,27 @@ export class VisualActionExecutor {
       return { success: false, method: 'upload', error: `File not found: ${localFilePath}` };
     }
     
-    // Wait a bit for modal/dialog to appear (Instagram opens modal after clicking "Post")
-    console.log('⏳ Waiting for upload modal to appear...');
-    await this.page.waitForTimeout(1500);
+    // Wait for modal to appear (Instagram shows upload modal after clicking "New post")
+    // On desktop viewport, modal appears; on mobile, native file picker opens
+    console.log('⏳ Waiting for upload modal or file input to appear...');
+    const modal = await this.waitForModal(3000); // Wait up to 3 seconds for modal
+    if (modal && modal.asElement()) {
+      console.log('📦 Upload modal detected');
+    }
+    
+    // Give a brief moment for the page to settle after clicking "Post" button
+    // Instagram may add file inputs dynamically, so we wait a bit
+    await this.wait(500);
     
     // Find ANY file input on the page (including hidden ones)
-    // Instagram and other sites often hide the file input and use a button to trigger it
-    // Instagram has multiple file inputs (one for avif/jpeg/png, one for jpeg only)
+    // Instagram has exactly 2 file inputs:
+    // 1. One with accept="image/avif,image/jpeg,image/png" (broader, preferred)
+    // 2. One with accept="image/jpeg" (narrower)
+    // Both are inside forms with role="presentation" and are typically hidden
+    // They may be in a modal or in the main document
     let fileInput = null;
     let attempts = 0;
-    const maxAttempts = 3;
+    const maxAttempts = 5; // Increased retries for mobile viewport (inputs may be added dynamically)
     
     // Determine file extension to match accept attribute
     const fileExt = path.extname(localFilePath).toLowerCase().replace('.', '');
@@ -186,13 +306,57 @@ export class VisualActionExecutor {
     while (!fileInput && attempts < maxAttempts) {
       const fileInputHandle = await this.page.evaluateHandle((preferredMimeType) => {
         // Find all file inputs on the page (including hidden ones)
-        const fileInputs = Array.from(document.querySelectorAll('input[type="file"]'));
+        // Instagram has inputs inside forms with role="presentation"
+        // Check in modal first, then document
+        let fileInputs = [];
+        
+        // Check for modal and search within it
+        const modals = [
+          ...document.querySelectorAll('[role="dialog"]'),
+          ...document.querySelectorAll('[aria-modal="true"]'),
+          ...document.querySelectorAll('dialog'),
+        ];
+        
+        let modalFound = null;
+        for (const modal of modals) {
+          const style = window.getComputedStyle(modal);
+          const rect = modal.getBoundingClientRect();
+          if (style.display !== 'none' && rect.width > 0 && rect.height > 0) {
+            modalFound = modal;
+            break;
+          }
+        }
+        
+        if (modalFound) {
+          // Search in modal first
+          fileInputs = Array.from(modalFound.querySelectorAll('input[type="file"]'));
+          if (fileInputs.length > 0) {
+            console.log('📦 Found file inputs in modal:', fileInputs.length);
+          }
+        }
+        
+        // If not found in modal, search entire document
+        if (fileInputs.length === 0) {
+          fileInputs = Array.from(document.querySelectorAll('input[type="file"]'));
+        }
+        
+        console.log(`🔍 Found ${fileInputs.length} file input(s) on page`);
         
         if (fileInputs.length === 0) {
+          console.log('⚠️  No file inputs found in DOM');
           return null;
         }
         
-        // Try to find one that matches the file type (check accept attribute)
+        // Log all found inputs for debugging
+        fileInputs.forEach((input, idx) => {
+          const accept = input.getAttribute('accept') || 'none';
+          const style = window.getComputedStyle(input);
+          const rect = input.getBoundingClientRect();
+          const isVisible = style.display !== 'none' && rect.width > 0 && rect.height > 0;
+          console.log(`   Input ${idx + 1}: accept="${accept}", visible=${isVisible}, display=${style.display}`);
+        });
+        
+        // Strategy 1: Try to find one that matches the file type (check accept attribute)
         for (const input of fileInputs) {
           const accept = input.getAttribute('accept') || '';
           // Check if accept attribute includes our file type
@@ -202,29 +366,46 @@ export class VisualActionExecutor {
           }
         }
         
-        // If no match, prefer visible ones first, but accept hidden ones too
-        for (const input of fileInputs) {
+        // Strategy 2: Prefer the input with broader accept (e.g., "image/avif,image/jpeg,image/png" over "image/jpeg")
+        // This matches Instagram's structure where one input accepts multiple formats
+        const sortedInputs = fileInputs.sort((a, b) => {
+          const aAccept = a.getAttribute('accept') || '';
+          const bAccept = b.getAttribute('accept') || '';
+          // Prefer inputs with more accept types (broader)
+          const aCount = aAccept.split(',').length;
+          const bCount = bAccept.split(',').length;
+          if (aCount !== bCount) {
+            return bCount - aCount; // More accept types = better
+          }
+          // If same count, prefer one that includes our preferred type
+          if (aAccept.includes(preferredMimeType) && !bAccept.includes(preferredMimeType)) {
+            return -1;
+          }
+          if (!aAccept.includes(preferredMimeType) && bAccept.includes(preferredMimeType)) {
+            return 1;
+          }
+          return 0;
+        });
+        
+        // Strategy 3: If no match, prefer visible ones first, but accept hidden ones too
+        for (const input of sortedInputs) {
           const style = window.getComputedStyle(input);
           const rect = input.getBoundingClientRect();
           // Accept if visible OR if hidden but in the DOM
           // Hidden inputs often have display:none but are still functional
           if (style.display !== 'none' || rect.width > 0 || rect.height > 0) {
-            console.log(`✅ Found file input (visible or functional)`);
+            const accept = input.getAttribute('accept') || 'none';
+            console.log(`✅ Found file input (visible or functional): accept="${accept}"`);
             return input;
           }
         }
         
-        // If no visible ones, return the first one (even if hidden)
-        // Instagram often has multiple hidden file inputs - prefer the one with broader accept
-        const sortedInputs = fileInputs.sort((a, b) => {
-          const aAccept = a.getAttribute('accept') || '';
-          const bAccept = b.getAttribute('accept') || '';
-          // Prefer inputs with more accept types (broader)
-          return bAccept.split(',').length - aAccept.split(',').length;
-        });
-        
-        console.log(`✅ Using first available file input (${fileInputs.length} total found)`);
-        return sortedInputs[0];
+        // Strategy 4: Return the first one from sorted list (even if hidden)
+        // Instagram's inputs are typically hidden but functional
+        const selected = sortedInputs[0];
+        const accept = selected.getAttribute('accept') || 'none';
+        console.log(`✅ Using first available file input (${fileInputs.length} total found): accept="${accept}"`);
+        return selected;
       }, fileMimeType);
       
       fileInput = fileInputHandle.asElement();
@@ -233,17 +414,39 @@ export class VisualActionExecutor {
         attempts++;
         if (attempts < maxAttempts) {
           console.log(`⚠️  File input not found (attempt ${attempts}/${maxAttempts}), waiting and retrying...`);
-          await this.page.waitForTimeout(1000);
+          // Wait a bit longer on later attempts (inputs may be added dynamically)
+          await this.wait(attempts * 500); // Progressive delay: 500ms, 1000ms, 1500ms, etc.
         }
       } else {
         // Log which input we found
         const acceptAttr = await fileInput.evaluate(el => el.getAttribute('accept') || 'none');
-        console.log(`📎 Selected file input with accept="${acceptAttr}"`);
+        const isVisible = await fileInput.evaluate(el => {
+          const style = window.getComputedStyle(el);
+          return style.display !== 'none';
+        });
+        console.log(`📎 Selected file input: accept="${acceptAttr}", visible=${isVisible}`);
       }
     }
     
     if (!fileInput) {
-      return { success: false, method: 'upload', error: 'No file input element found on page after multiple attempts' };
+      // Get page info for better error message
+      const pageInfo = await this.page.evaluate(() => {
+        const inputs = document.querySelectorAll('input[type="file"]');
+        return {
+          url: window.location.href,
+          inputCount: inputs.length,
+          inputs: Array.from(inputs).map(input => ({
+            accept: input.getAttribute('accept') || 'none',
+            visible: window.getComputedStyle(input).display !== 'none'
+          }))
+        };
+      });
+      
+      return { 
+        success: false, 
+        method: 'upload', 
+        error: `No file input element found on page after ${maxAttempts} attempts. Found ${pageInfo.inputCount} input(s) on ${pageInfo.url}. This may be a viewport issue - try desktop viewport or ensure "Post" button was clicked successfully.` 
+      };
     }
     
     // Use setInputFiles to set the file directly (avoids opening file picker)
@@ -253,7 +456,7 @@ export class VisualActionExecutor {
       console.log('✅ File set successfully via setInputFiles');
       
       // Wait a moment to ensure the file is processed
-      await this.page.waitForTimeout(500);
+      await this.wait(500);
       
       // Clean up temporary file if it was downloaded
       if (filePath.startsWith('http://') || filePath.startsWith('https://')) {
@@ -289,11 +492,29 @@ export class VisualActionExecutor {
     try {
       const timeout = 5000; // 5 seconds max timeout
 
-      // Wait for element to exist (with timeout)
-      await this.page.waitForSelector(selector, { timeout, visible: true }).catch(() => null);
+      // First, wait for modal if it might appear (e.g., after clicking "New post")
+      // This helps when elements are inside modals
+      await this.waitForModal(2000).catch(() => null);
 
-      // Check if element exists
-      const element = await this.page.$(selector);
+      // Wait for element to exist (with timeout)
+      // Try searching in modal first, then document
+      let element = null;
+      
+      // Check if element is in a modal
+      const modal = await this.waitForModal(1000);
+      if (modal && modal.asElement()) {
+        element = await modal.asElement().$(selector).catch(() => null);
+        if (element) {
+          console.log('📦 Found element in modal');
+        }
+      }
+      
+      // If not found in modal, search in document
+      if (!element) {
+        await this.page.waitForSelector(selector, { timeout, visible: true }).catch(() => null);
+        element = await this.page.$(selector);
+      }
+
       if (!element) {
         return { success: false, method: 'selector' };
       }
@@ -424,6 +645,7 @@ export class VisualActionExecutor {
    * Find elements by text content (text-based fallback)
    * Uses page.evaluate() to search DOM for text
    * Supports partial text matching (contains, not exact)
+   * Prioritizes searching in modals if they exist
    * @param {string} text - Text to search for
    * @returns {Promise<Array>} Array of matches with positions
    */
@@ -432,19 +654,44 @@ export class VisualActionExecutor {
       return [];
     }
 
-    const candidates = await this.page.evaluate((searchText) => {
+    // Check for modal first - prioritize searching in modals
+    const modal = await this.waitForModal(1000);
+    const hasModal = modal && modal.asElement();
+
+    const candidates = await this.page.evaluate((searchText, hasModal) => {
       const results = [];
+      const processedElements = new Set();
+      
+      // Find modal if it exists
+      let searchRoot = document.body;
+      if (hasModal) {
+        const modals = [
+          ...document.querySelectorAll('[role="dialog"]'),
+          ...document.querySelectorAll('[aria-modal="true"]'),
+          ...document.querySelectorAll('dialog'),
+        ];
+        
+        // Find visible modal
+        for (const modal of modals) {
+          const style = window.getComputedStyle(modal);
+          const rect = modal.getBoundingClientRect();
+          if (style.display !== 'none' && rect.width > 0 && rect.height > 0) {
+            searchRoot = modal;
+            console.log('📦 Searching in modal first');
+            break;
+          }
+        }
+      }
       
       // Search all text nodes and their parent elements
       const walker = document.createTreeWalker(
-        document.body,
+        searchRoot,
         NodeFilter.SHOW_TEXT,
         null,
         false
       );
 
       let textNode;
-      const processedElements = new Set();
 
       while ((textNode = walker.nextNode())) {
         const textContent = textNode.textContent?.trim() || '';
@@ -490,7 +737,16 @@ export class VisualActionExecutor {
       }
 
       // Also search direct element text content (for elements without text nodes)
-      const allElements = document.querySelectorAll('*');
+      // Prioritize modal elements if modal exists
+      let allElements = [];
+      if (hasModal && searchRoot !== document.body) {
+        // Search in modal first
+        allElements = searchRoot.querySelectorAll('*');
+      } else {
+        // Search entire document
+        allElements = document.querySelectorAll('*');
+      }
+      
       for (const element of allElements) {
         if (processedElements.has(element)) continue;
 

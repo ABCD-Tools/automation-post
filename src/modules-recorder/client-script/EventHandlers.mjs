@@ -4,10 +4,25 @@ export const EventHandlers = `
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
     // Clicks with visual data
+    // Using capture phase (true) to catch events from dynamically added modals
     document.addEventListener('click', async function(e) {
       if (e.target === document.body || !e.target) return;
       
       const element = e.target;
+      
+      // Debug: Log if clicking in a modal
+      const isInModal = element.closest && (
+        element.closest('[role="dialog"]') ||
+        element.closest('[aria-modal="true"]') ||
+        element.closest('[class*="modal"]') ||
+        element.closest('[class*="dialog"]') ||
+        element.closest('[id*="modal"]') ||
+        element.closest('[id*="dialog"]')
+      );
+      
+      if (isInModal) {
+        console.log('📦 Click detected in modal/dialog');
+      }
       const rect = element.getBoundingClientRect();
       const position = getElementPosition(element, e.clientX, e.clientY);
 
@@ -228,11 +243,24 @@ export const EventHandlers = `
       });
     }, true);
 
-    // Capture file uploads
+    // Capture file uploads (including from modals)
+    // Using capture phase to catch events from dynamically added file inputs
     document.addEventListener('change', function(e) {
       if (e.target.type === 'file' && e.target.files && e.target.files.length > 0) {
         const selector = generateSelector(e.target);
         const file = e.target.files[0];
+        
+        // Check if file input is in a modal
+        const isInModal = e.target.closest && (
+          e.target.closest('[role="dialog"]') ||
+          e.target.closest('[aria-modal="true"]') ||
+          e.target.closest('[class*="modal"]') ||
+          e.target.closest('[id*="modal"]')
+        );
+        
+        if (isInModal) {
+          console.log('📁 File upload detected in modal:', file.name);
+        }
         
         recordAction('upload', {
           selector,

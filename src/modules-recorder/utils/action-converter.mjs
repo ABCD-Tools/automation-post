@@ -40,7 +40,66 @@ export function convertToMicroActions(recordedActions) {
           break;
         }
 
-        // Structure visual data according to requirements
+        // Check if this click is on a caption/textarea field - convert to type action
+        const surroundingText = action.visual.surroundingText || [];
+        const text = action.visual.text || '';
+        const backupSelector = action.backup_selector || '';
+        const elementTag = action.element?.tag?.toLowerCase() || '';
+        
+        // Detect caption field by:
+        // 1. Surrounding text contains "caption" (case insensitive)
+        // 2. aria-label contains "caption"
+        // 3. Element is inside a caption field (backup_selector suggests it)
+        // 4. Text is a template variable like "{{captions}}"
+        const isCaptionField = 
+          surroundingText.some(st => /caption|write a caption/i.test(st)) ||
+          backupSelector.includes('aria-label') && /caption/i.test(backupSelector) ||
+          /caption/i.test(backupSelector) ||
+          (text && /^\{\{caption/i.test(text)) ||
+          elementTag === 'textarea' ||
+          (action.element?.name && /caption|post|content|message/i.test(action.element.name));
+
+        if (isCaptionField) {
+          // Convert click to type action for caption fields
+          const visualData = {
+            screenshot: action.visual.screenshot || null,
+            contextScreenshot: action.visual.contextScreenshot || null,
+            text: text || '',
+            placeholder: action.visual.placeholder || 'Write a caption...',
+            inputType: 'text',
+            position: {
+              absolute: action.visual.position?.absolute || { x: 0, y: 0 },
+              relative: action.visual.position?.relative || { x: 0, y: 0 },
+            },
+            boundingBox: action.visual.boundingBox || { x: 0, y: 0, width: 0, height: 0 },
+            surroundingText: surroundingText,
+            timestamp: action.visual.timestamp || action.timestamp,
+          };
+
+          // Extract text value - if it's a template variable, use it; otherwise use {{caption}}
+          let textValue = text;
+          if (text && /^\{\{caption/i.test(text)) {
+            textValue = text; // Already a template variable
+          } else if (text && text.trim().length > 0) {
+            textValue = text; // Use actual text if present
+          } else {
+            textValue = '{{caption}}'; // Default template
+          }
+
+          const microAction = {
+            name: `Type in "caption"`,
+            type: 'type',
+            visual: visualData,
+            backup_selector: action.backup_selector || null,
+            text: textValue,
+            execution_method: action.execution_method || 'visual_first',
+          };
+          microActions.push(microAction);
+          lastTypingAction = microAction;
+          break;
+        }
+
+        // Regular click action (not a caption field)
         const visualData = {
           screenshot: action.visual.screenshot || null,
           contextScreenshot: action.visual.contextScreenshot || null,
