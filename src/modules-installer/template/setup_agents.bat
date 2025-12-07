@@ -18,8 +18,21 @@ REM Get the directory where this batch file is located
 set "SCRIPT_DIR=%~dp0"
 cd /d "%SCRIPT_DIR%"
 
-REM Check if node.exe already exists
-if exist "%SCRIPT_DIR%node.exe" (
+REM If we're in script/ subdirectory, go up to agents/ root
+if exist "%SCRIPT_DIR%..\agents" (
+    set "AGENTS_DIR=%SCRIPT_DIR%.."
+) else if "%SCRIPT_DIR:~-8%"=="\script\" (
+    set "AGENTS_DIR=%SCRIPT_DIR%.."
+) else (
+    set "AGENTS_DIR=%SCRIPT_DIR%"
+)
+
+REM Normalize path
+cd /d "%AGENTS_DIR%"
+set "AGENTS_DIR=%CD%"
+
+REM Check if node.exe already exists in agents root
+if exist "%AGENTS_DIR%\node.exe" (
     echo [1/3] Node.js already exists. Skipping download.
     goto :download_pnpm
 )
@@ -30,8 +43,8 @@ echo.
 REM Download Node.js using PowerShell
 set "NODE_VERSION=18.20.4"
 set "NODE_URL=https://nodejs.org/dist/v%NODE_VERSION%/node-v%NODE_VERSION%-win-x64.zip"
-set "NODE_ZIP=%SCRIPT_DIR%node.zip"
-set "NODE_EXTRACT=%SCRIPT_DIR%node-extract"
+set "NODE_ZIP=%AGENTS_DIR%\node.zip"
+set "NODE_EXTRACT=%AGENTS_DIR%\node-extract"
 
 powershell -Command "& {[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri '%NODE_URL%' -OutFile '%NODE_ZIP%'}"
 
@@ -51,14 +64,14 @@ if errorlevel 1 (
     exit /b 1
 )
 
-REM Copy node.exe to script directory
-copy "%NODE_EXTRACT%\\node-v%NODE_VERSION%-win-x64\\node.exe" "%SCRIPT_DIR%node.exe" >nul
+REM Copy node.exe to agents root directory
+copy "%NODE_EXTRACT%\\node-v%NODE_VERSION%-win-x64\\node.exe" "%AGENTS_DIR%\node.exe" >nul
 
 REM Clean up
 rmdir /s /q "%NODE_EXTRACT%" >nul 2>&1
 del "%NODE_ZIP%" >nul 2>&1
 
-if exist "%SCRIPT_DIR%node.exe" (
+if exist "%AGENTS_DIR%\node.exe" (
     echo   ✓ Node.js installed successfully
 ) else (
     echo ERROR: Failed to install Node.js
@@ -70,15 +83,15 @@ if exist "%SCRIPT_DIR%node.exe" (
 echo.
 echo [2/3] Downloading pnpm...
 
-REM Check if pnpm.exe already exists
-if exist "%SCRIPT_DIR%pnpm.exe" (
+REM Check if pnpm.exe already exists in agents root
+if exist "%AGENTS_DIR%\pnpm.exe" (
     echo   pnpm already exists. Skipping download.
     goto :install_deps
 )
 
 REM Download pnpm using PowerShell
 set "PNPM_URL=https://github.com/pnpm/pnpm/releases/latest/download/pnpm-win-x64.exe"
-set "PNPM_EXE=%SCRIPT_DIR%pnpm.exe"
+set "PNPM_EXE=%AGENTS_DIR%\pnpm.exe"
 
 powershell -Command "& {[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri '%PNPM_URL%' -OutFile '%PNPM_EXE%'}"
 
@@ -89,7 +102,7 @@ if errorlevel 1 (
     exit /b 1
 )
 
-if exist "%SCRIPT_DIR%pnpm.exe" (
+if exist "%AGENTS_DIR%\pnpm.exe" (
     echo   ✓ pnpm installed successfully
 ) else (
     echo ERROR: Failed to install pnpm
@@ -103,7 +116,10 @@ echo [3/3] Installing dependencies...
 echo.
 
 REM Set environment variable to use bundled Node.js for pnpm
-set "PNPM_NODE_PATH=%SCRIPT_DIR%node.exe"
+set "PNPM_NODE_PATH=%AGENTS_DIR%\node.exe"
+
+REM Change to agents directory for pnpm install
+cd /d "%AGENTS_DIR%"
 
 REM Run pnpm install
 echo Running pnpm install...
@@ -114,7 +130,7 @@ if errorlevel 1 (
     echo ERROR: Failed to install dependencies with pnpm!
     echo.
     echo Trying with npm as fallback...
-    "%SCRIPT_DIR%node.exe" -e "const { execSync } = require('child_process'); execSync('npm install', { stdio: 'inherit' });"
+    "%AGENTS_DIR%\node.exe" -e "const { execSync } = require('child_process'); execSync('npm install', { stdio: 'inherit' });"
     
     if errorlevel 1 (
         echo.

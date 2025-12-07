@@ -276,7 +276,7 @@ INSTALL_PATH=${installPath}
 # Agent Version
 AGENT_VERSION=1.0.0
 `;
-      zip.addFile('.env', Buffer.from(envContent, 'utf-8'));
+      zip.addFile('agents/.env', Buffer.from(envContent, 'utf-8'));
       zip.writeZip(customZipPath);
       console.log('   ✓ Custom .env injected into template');
       
