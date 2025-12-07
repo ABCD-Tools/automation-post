@@ -171,13 +171,104 @@ async function executeJob(job) {
     });
     
     // Get workflow from job content
-    const workflow = job.content?.workflow || job.content;
-    if (!workflow || !workflow.actions) {
-      throw new Error('Invalid workflow in job content');
+    let workflow = job.content?.workflow || job.content;
+    
+    if (!workflow) {
+      logger.error(`Job ${job.id} has no workflow in content. Content keys:`, Object.keys(job.content || {}));
+      throw new Error('Invalid workflow in job content: workflow is missing');
+    }
+    
+    // Handle both formats: actions array (execution format) or steps array (database format)
+    if (!workflow.actions) {
+      // Parse steps if it's a string (JSONB fields might be returned as strings)
+      let steps = workflow.steps;
+      if (steps && typeof steps === 'string') {
+        try {
+          steps = JSON.parse(steps);
+          workflow.steps = steps;
+        } catch (parseError) {
+          logger.error(`Failed to parse workflow steps as JSON:`, parseError.message);
+          throw new Error(`Invalid workflow format: steps is not valid JSON`);
+        }
+      }
+      
+      // Try to convert from database format (steps) to execution format (actions)
+      if (workflow.steps && Array.isArray(workflow.steps)) {
+        logger.warn(`Job ${job.id} workflow is in database format (steps). Attempting conversion...`);
+        
+        try {
+          // Convert steps to actions
+          const actions = workflow.steps.map((step, index) => {
+            const microAction = step.micro_action;
+            
+            if (!microAction) {
+              throw new Error(
+                `Step ${index + 1} (micro_action_id: ${step.micro_action_id}) is missing micro_action data. ` +
+                'Workflow must be loaded with micro_actions populated.'
+              );
+            }
+            
+            const baseParams = microAction.params || {};
+            const stepOverrides = step.params_override || {};
+            const finalParams = { ...baseParams, ...stepOverrides };
+            
+            const visual = finalParams.visual || microAction.visual || null;
+            const backupSelector = finalParams.backup_selector || microAction.backup_selector || null;
+            const executionMethod = finalParams.execution_method || microAction.execution_method || 'visual_first';
+            
+            const action = {
+              name: microAction.name || step.name || `Action ${index + 1}`,
+              type: microAction.type || step.type,
+              params: finalParams,
+            };
+            
+            if (visual) action.visual = visual;
+            if (backupSelector) action.backup_selector = backupSelector;
+            if (executionMethod) action.execution_method = executionMethod;
+            
+            return action;
+          });
+          
+          workflow = {
+            id: workflow.id,
+            name: workflow.name,
+            platform: workflow.platform,
+            type: workflow.type,
+            actions: actions,
+          };
+          
+          logger.info(`Successfully converted workflow from steps format (${workflow.steps.length} steps → ${actions.length} actions)`);
+        } catch (conversionError) {
+          logger.error(`Failed to convert workflow from steps format:`, conversionError.message);
+          logger.error(`Workflow structure:`, JSON.stringify({
+            hasSteps: !!workflow.steps,
+            stepsLength: workflow.steps?.length,
+            stepSample: workflow.steps?.[0] ? {
+              hasMicroAction: !!workflow.steps[0].micro_action,
+              microActionId: workflow.steps[0].micro_action_id,
+            } : null,
+          }, null, 2));
+          throw new Error(`Invalid workflow format: ${conversionError.message}`);
+        }
+      } else {
+        // Neither actions nor steps - invalid format
+        logger.error(`Job ${job.id} workflow has invalid format. Expected 'actions' or 'steps' array.`);
+        logger.error(`Workflow structure:`, JSON.stringify({
+          hasActions: !!workflow.actions,
+          hasSteps: !!workflow.steps,
+          workflowKeys: Object.keys(workflow),
+        }, null, 2));
+        throw new Error('Invalid workflow in job content: missing actions or steps array');
+      }
+    }
+    
+    if (!workflow.actions || !Array.isArray(workflow.actions) || workflow.actions.length === 0) {
+      logger.error(`Job ${job.id} workflow has no valid actions array`);
+      throw new Error('Invalid workflow in job content: actions array is missing or empty');
     }
     
     // Execute workflow
-    logger.info(`Executing workflow with ${workflow.actions.length} actions...`);
+    logger.info(`Executing workflow "${workflow.name || workflow.id}" with ${workflow.actions.length} action(s)...`);
     const result = await executor.executeWorkflow(workflow.actions, job.id);
     
     // Update job status

@@ -1,4 +1,5 @@
 import { createSupabaseServiceRoleClient } from '@modules-view/utils/supabase.js';
+import { populateMicroActions, convertWorkflowToActions } from '@modules-logic/utils/workflow-converter.js';
 
 const supabase = createSupabaseServiceRoleClient();
 
@@ -329,7 +330,40 @@ export async function loginAccount(userId, accountId) {
     throw new Error(`No auth workflow found for platform: ${account.platform}. Please create an auth workflow first.`);
   }
 
-  const authWorkflow = workflows[0];
+  let authWorkflow = workflows[0];
+
+  // Parse steps if it's a string (JSONB fields might be returned as strings)
+  if (authWorkflow.steps && typeof authWorkflow.steps === 'string') {
+    try {
+      authWorkflow.steps = JSON.parse(authWorkflow.steps);
+    } catch (parseError) {
+      throw new Error(`Failed to parse workflow steps: ${parseError.message}`);
+    }
+  }
+
+  // Populate micro_actions in workflow steps
+  if (authWorkflow.steps && Array.isArray(authWorkflow.steps)) {
+    const microActionIds = authWorkflow.steps
+      .map((step) => step.micro_action_id)
+      .filter(Boolean);
+
+    if (microActionIds.length > 0) {
+      const { data: microActions, error: microActionsError } = await supabase
+        .from('micro_actions')
+        .select('id, name, type, platform, params')
+        .in('id', microActionIds);
+
+      if (microActionsError) {
+        throw new Error(`Failed to load micro-actions: ${microActionsError.message}`);
+      }
+
+      // Populate micro_actions in steps
+      authWorkflow = populateMicroActions(authWorkflow, microActions || []);
+    }
+  }
+
+  // Convert workflow from database format (steps) to execution format (actions)
+  const convertedWorkflow = convertWorkflowToActions(authWorkflow);
 
   // Update account status to pending_verification (will be updated to active on success)
   const { error: updateError } = await supabase
@@ -342,7 +376,7 @@ export async function loginAccount(userId, accountId) {
   }
 
   // Create login job with auth workflow
-  // The job content will contain the workflow and account info
+  // The job content will contain the workflow (converted to actions format) and account info
   // The client will decrypt the password and execute the workflow
   const { data: job, error: jobError } = await supabase
     .from('jobs')
@@ -352,7 +386,7 @@ export async function loginAccount(userId, accountId) {
       status: 'queued',
       content: {
         workflow_id: authWorkflow.id,
-        workflow: authWorkflow,
+        workflow: convertedWorkflow, // Store converted workflow with actions array
         account_id: accountId,
         platform: account.platform,
         username: account.username,
