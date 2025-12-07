@@ -28,22 +28,52 @@ if (existsSync(envPath)) {
 function normalizePEMKey(key) {
   if (!key) return '';
   
+  // Log raw key for debugging
+  console.log(`[CONFIG] Normalizing PEM key: length=${key.length}, has newlines=${key.includes('\n')}, has escaped=${key.includes('\\n')}`);
+  
   // If already properly formatted, return as-is
   if (key.includes('\n') && key.includes('-----BEGIN') && key.includes('-----END')) {
+    console.log(`[CONFIG] Key already properly formatted`);
     return key;
   }
   
-  // Replace escaped newlines
+  // Replace escaped newlines (\\n -> \n)
+  const beforeReplace = key;
   key = key.replace(/\\n/g, '\n');
+  if (beforeReplace !== key) {
+    console.log(`[CONFIG] Replaced escaped newlines`);
+  }
   
   // If key doesn't have newlines but has BEGIN/END markers, try to reconstruct
   if (key.includes('-----BEGIN') && key.includes('-----END') && !key.includes('\n')) {
-    // This shouldn't happen with proper PEM format, but handle it
-    key = key.replace(/-----BEGIN/g, '\n-----BEGIN').replace(/-----END/g, '-----END\n');
+    console.log(`[CONFIG] Attempting to reconstruct PEM format (key missing newlines)`);
+    
+    // Extract base64 content and reconstruct with proper line breaks
+    const beginMarker = key.includes('-----BEGIN PUBLIC KEY-----') ? '-----BEGIN PUBLIC KEY-----' : '-----BEGIN PRIVATE KEY-----';
+    const endMarker = key.includes('-----END PUBLIC KEY-----') ? '-----END PUBLIC KEY-----' : '-----END PRIVATE KEY-----';
+    
+    const beginIdx = key.indexOf(beginMarker);
+    const endIdx = key.indexOf(endMarker);
+    
+    if (beginIdx !== -1 && endIdx !== -1 && endIdx > beginIdx) {
+      const base64Content = key.substring(beginIdx + beginMarker.length, endIdx).trim();
+      
+      // Reconstruct with proper newlines: BEGIN on its own line, base64 in 64-char lines, END on its own line
+      const base64Lines = [];
+      for (let i = 0; i < base64Content.length; i += 64) {
+        base64Lines.push(base64Content.substring(i, i + 64));
+      }
+      
+      key = beginMarker + '\n' + base64Lines.join('\n') + '\n' + endMarker;
+      console.log(`[CONFIG] Reconstructed key with ${base64Lines.length} base64 lines`);
+    }
   }
   
   // Ensure proper line endings
-  return key.trim();
+  const normalized = key.trim();
+  console.log(`[CONFIG] Normalized key: length=${normalized.length}, lines=${normalized.split('\n').length}`);
+  
+  return normalized;
 }
 
 /**

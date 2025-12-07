@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
-import { generateAESKey, validateKeys } from '@modules-view/utils/key-generator';
+import { generateRSAKey, validateKeys } from '@modules-view/utils/key-generator';
 import { detectBrowser, validateBrowserPath } from '@modules-view/utils/browser-detector';
 
 export default function Install() {
@@ -31,12 +31,30 @@ export default function Install() {
   // Auto-generate keys when mode is 'auto'
   useEffect(() => {
     if (keyMode === 'auto') {
-      generateAESKey()
+      generateRSAKey()
         .then(keys => {
+          // Validate generated keys before setting
+          console.log('[KEY GENERATION] Validating generated keys...');
+          console.log('[KEY GENERATION] Public key length:', keys.encryptionKey.length);
+          console.log('[KEY GENERATION] Public key has newlines:', keys.encryptionKey.includes('\n'));
+          console.log('[KEY GENERATION] Public key lines:', keys.encryptionKey.split('\n').length);
+          console.log('[KEY GENERATION] Private key length:', keys.decryptionKey.length);
+          console.log('[KEY GENERATION] Private key has newlines:', keys.decryptionKey.includes('\n'));
+          console.log('[KEY GENERATION] Private key lines:', keys.decryptionKey.split('\n').length);
+          
+          const validation = validateKeys(keys.encryptionKey, keys.decryptionKey);
+          if (!validation.valid) {
+            console.error('[KEY GENERATION] Validation failed:', validation.errors);
+            setError('Generated keys are invalid: ' + validation.errors.join(', '));
+            return;
+          }
+          
+          console.log('[KEY GENERATION] ✓ Keys validated successfully');
           setEncryptionKey(keys.encryptionKey);
           setDecryptionKey(keys.decryptionKey);
         })
         .catch(err => {
+          console.error('[KEY GENERATION] Error:', err);
           setError('Failed to generate encryption keys: ' + err.message);
         });
     }
@@ -99,13 +117,32 @@ export default function Install() {
       return;
     }
 
-    // Validate keys
+    // Validate keys with detailed checks
+    console.log('[DOWNLOAD] Validating keys before download...');
+    console.log('[DOWNLOAD] Encryption key length:', encryptionKey.length);
+    console.log('[DOWNLOAD] Encryption key has newlines:', encryptionKey.includes('\n'));
+    console.log('[DOWNLOAD] Encryption key lines:', encryptionKey.split('\n').length);
+    console.log('[DOWNLOAD] Decryption key length:', decryptionKey.length);
+    console.log('[DOWNLOAD] Decryption key has newlines:', decryptionKey.includes('\n'));
+    console.log('[DOWNLOAD] Decryption key lines:', decryptionKey.split('\n').length);
+    
     const keyValidation = validateKeys(encryptionKey, decryptionKey);
     if (!keyValidation.valid) {
+      console.error('[DOWNLOAD] Key validation failed:', keyValidation.errors);
       setError(keyValidation.errors.join(', '));
       setLoading(false);
       return;
     }
+    
+    // Additional validation: Check that keys have proper PEM structure
+    if (!encryptionKey.includes('\n') || !decryptionKey.includes('\n')) {
+      console.error('[DOWNLOAD] Keys are missing newlines - this will cause issues in .env file');
+      setError('Keys must have proper newlines. Please regenerate keys.');
+      setLoading(false);
+      return;
+    }
+    
+    console.log('[DOWNLOAD] ✓ Keys validated successfully');
 
     try {
       // Get auth token from storage

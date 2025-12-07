@@ -16,7 +16,7 @@
  *   encryptionKey: Public key in PEM format (for encryption, stored in server)
  *   decryptionKey: Private key in PEM format (for decryption, stored in client .env)
  */
-export async function generateAESKey() {
+export async function generateRSAKey() {
   try {
     // Check for Web Crypto API availability
     const webCrypto = window.crypto || window.msCrypto;
@@ -43,6 +43,50 @@ export async function generateAESKey() {
     // Export private key (DECRYPTION_KEY) to PEM format
     const privateKeyData = await webCrypto.subtle.exportKey('pkcs8', keyPair.privateKey);
     const privateKeyPem = arrayBufferToPEM(privateKeyData, 'PRIVATE KEY');
+
+    // Validate keys before returning
+    const validationErrors = [];
+    
+    // Validate public key format
+    if (!publicKeyPem.includes('-----BEGIN PUBLIC KEY-----') || !publicKeyPem.includes('-----END PUBLIC KEY-----')) {
+      validationErrors.push('Public key is missing BEGIN/END markers');
+    }
+    if (!publicKeyPem.includes('\n')) {
+      validationErrors.push('Public key is missing newlines');
+    }
+    
+    // Validate private key format
+    if (!privateKeyPem.includes('-----BEGIN PRIVATE KEY-----') || !privateKeyPem.includes('-----END PRIVATE KEY-----')) {
+      validationErrors.push('Private key is missing BEGIN/END markers');
+    }
+    if (!privateKeyPem.includes('\n')) {
+      validationErrors.push('Private key is missing newlines');
+    }
+    
+    // Try to parse keys to ensure they're valid
+    try {
+      // In browser, we can't use Node.js crypto, but we can check the structure
+      const publicKeyLines = publicKeyPem.split('\n');
+      if (publicKeyLines.length < 3) {
+        validationErrors.push('Public key has too few lines (expected at least 3: BEGIN, content, END)');
+      }
+      
+      const privateKeyLines = privateKeyPem.split('\n');
+      if (privateKeyLines.length < 3) {
+        validationErrors.push('Private key has too few lines (expected at least 3: BEGIN, content, END)');
+      }
+    } catch (parseError) {
+      validationErrors.push(`Key parsing error: ${parseError.message}`);
+    }
+    
+    if (validationErrors.length > 0) {
+      console.error('[KEY GENERATION] Validation errors:', validationErrors);
+      throw new Error(`Generated RSA keys are invalid: ${validationErrors.join(', ')}`);
+    }
+    
+    console.log('[KEY GENERATION] ✓ RSA key pair generated and validated successfully');
+    console.log(`[KEY GENERATION] Public key length: ${publicKeyPem.length} chars, lines: ${publicKeyPem.split('\n').length}`);
+    console.log(`[KEY GENERATION] Private key length: ${privateKeyPem.length} chars, lines: ${privateKeyPem.split('\n').length}`);
 
     return {
       encryptionKey: publicKeyPem,   // PUBLIC_KEY (stored in server)

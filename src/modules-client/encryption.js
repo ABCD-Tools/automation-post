@@ -31,40 +31,87 @@ export async function decrypt(encryptedData, privateKeyPem, debugLogger = null) 
   }
 
   try {
+    // Log raw key for debugging
+    log.debug(`   [DEBUG] Raw privateKeyPem length: ${privateKeyPem.length} chars`);
+    log.debug(`   [DEBUG] Raw privateKeyPem first 200 chars: ${JSON.stringify(privateKeyPem.substring(0, 200))}`);
+    log.debug(`   [DEBUG] Raw privateKeyPem contains '\\n': ${privateKeyPem.includes('\n')}`);
+    log.debug(`   [DEBUG] Raw privateKeyPem contains '\\\\n': ${privateKeyPem.includes('\\n')}`);
+    log.debug(`   [DEBUG] Raw privateKeyPem contains 'BEGIN PRIVATE KEY': ${privateKeyPem.includes('-----BEGIN PRIVATE KEY-----')}`);
+    log.debug(`   [DEBUG] Raw privateKeyPem contains 'END PRIVATE KEY': ${privateKeyPem.includes('-----END PRIVATE KEY-----')}`);
+    
     // Normalize private key - ensure proper newlines for PEM format
     // dotenv may not preserve newlines correctly when reading from .env
     let normalizedKey = privateKeyPem;
     
-    // Replace escaped newlines
+    // Step 1: Replace escaped newlines (\\n -> \n)
+    const beforeReplace = normalizedKey;
     normalizedKey = normalizedKey.replace(/\\n/g, '\n');
+    if (beforeReplace !== normalizedKey) {
+      log.debug(`   [DEBUG] Replaced escaped newlines (\\n -> actual newlines)`);
+    }
     
-    // If key is missing newlines but has BEGIN/END markers, try to fix it
-    if (normalizedKey.includes('-----BEGIN') && normalizedKey.includes('-----END')) {
-      // Check if newlines are missing between BEGIN and content
+    // Step 2: If key has BEGIN/END but no newlines, reconstruct PEM format
+    if (normalizedKey.includes('-----BEGIN PRIVATE KEY-----') && normalizedKey.includes('-----END PRIVATE KEY-----')) {
       if (!normalizedKey.includes('\n')) {
-        // Try to reconstruct: BEGIN on its own line, content, END on its own line
-        normalizedKey = normalizedKey
-          .replace(/-----BEGIN PRIVATE KEY-----/g, '-----BEGIN PRIVATE KEY-----\n')
-          .replace(/-----END PRIVATE KEY-----/g, '\n-----END PRIVATE KEY-----')
-          .replace(/(.{64})/g, '$1\n') // Add newlines every 64 chars (PEM standard)
-          .replace(/\n\n+/g, '\n') // Remove duplicate newlines
-          .trim();
+        log.warn(`   ⚠️  Private key appears to be missing newlines - attempting to fix...`);
+        log.debug(`   [DEBUG] Key before reconstruction: ${JSON.stringify(normalizedKey.substring(0, 100))}`);
+        
+        // Extract the base64 content between BEGIN and END
+        const beginMarker = '-----BEGIN PRIVATE KEY-----';
+        const endMarker = '-----END PRIVATE KEY-----';
+        const beginIdx = normalizedKey.indexOf(beginMarker);
+        const endIdx = normalizedKey.indexOf(endMarker);
+        
+        if (beginIdx !== -1 && endIdx !== -1 && endIdx > beginIdx) {
+          const beforeBegin = normalizedKey.substring(0, beginIdx);
+          const afterEnd = normalizedKey.substring(endIdx + endMarker.length);
+          const base64Content = normalizedKey.substring(beginIdx + beginMarker.length, endIdx).trim();
+          
+          // Reconstruct with proper newlines: BEGIN on its own line, base64 in 64-char lines, END on its own line
+          const base64Lines = [];
+          for (let i = 0; i < base64Content.length; i += 64) {
+            base64Lines.push(base64Content.substring(i, i + 64));
+          }
+          
+          normalizedKey = beforeBegin + 
+            beginMarker + '\n' + 
+            base64Lines.join('\n') + '\n' + 
+            endMarker + 
+            afterEnd;
+          
+          log.debug(`   [DEBUG] Reconstructed key with ${base64Lines.length} base64 lines`);
+        }
       }
     }
     
-    log.debug(`   Decrypt input: encryptedData length=${encryptedData.length} chars, privateKey length=${normalizedKey.length} chars`);
-    log.debug(`   Private key first 100 chars: ${normalizedKey.substring(0, 100).replace(/\n/g, '\\n')}`);
+    // Step 3: Clean up any issues
+    normalizedKey = normalizedKey.trim();
+    
+    // Log normalized key for debugging
+    log.debug(`   [DEBUG] Normalized key length: ${normalizedKey.length} chars`);
+    log.debug(`   [DEBUG] Normalized key first 200 chars: ${JSON.stringify(normalizedKey.substring(0, 200))}`);
+    log.debug(`   [DEBUG] Normalized key contains newlines: ${normalizedKey.includes('\n')}`);
+    log.debug(`   [DEBUG] Normalized key line count: ${normalizedKey.split('\n').length}`);
+    log.debug(`   [DEBUG] Normalized key first line: ${JSON.stringify(normalizedKey.split('\n')[0])}`);
+    log.debug(`   [DEBUG] Normalized key last line: ${JSON.stringify(normalizedKey.split('\n').slice(-1)[0])}`);
     
     // Validate private key format
     if (!normalizedKey.includes('-----BEGIN PRIVATE KEY-----')) {
-      log.error(`   Invalid private key format: expected PEM format with 'BEGIN PRIVATE KEY'`);
-      log.error(`   Key preview: ${normalizedKey.substring(0, 100)}`);
+      log.error(`   [ERROR] Invalid private key format: expected PEM format with 'BEGIN PRIVATE KEY'`);
+      log.error(`   [ERROR] Key preview: ${JSON.stringify(normalizedKey.substring(0, 200))}`);
       throw new Error('Invalid private key format. Expected RSA private key in PEM format.');
+    }
+    
+    if (!normalizedKey.includes('-----END PRIVATE KEY-----')) {
+      log.error(`   [ERROR] Invalid private key format: missing 'END PRIVATE KEY' marker`);
+      log.error(`   [ERROR] Key preview: ${JSON.stringify(normalizedKey.substring(0, 200))}`);
+      throw new Error('Invalid private key format. Missing END PRIVATE KEY marker.');
     }
     
     // Verify key has proper structure
     if (!normalizedKey.includes('\n')) {
-      log.warn(`   ⚠️  Private key appears to be missing newlines - attempting to fix...`);
+      log.error(`   [ERROR] Private key still missing newlines after normalization`);
+      throw new Error('Private key format is invalid: missing required newlines.');
     }
     
     // Decode from base64

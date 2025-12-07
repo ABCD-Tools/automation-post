@@ -350,13 +350,26 @@ async function executeJob(job) {
               throw new Error('DECRYPTION_KEY (PRIVATE_KEY) is required. Cannot decrypt password.');
             }
             
-            // Log encryption details for debugging
+            // Log encryption details for debugging - FULL DETAILS
             logger.debug(`   Decryption details:`);
             logger.debug(`      Encrypted password length: ${account.encrypted_password.length} chars`);
             logger.debug(`      Using: DECRYPTION_KEY (PRIVATE_KEY)`);
             logger.debug(`      Private key length: ${privateKey.length} chars`);
             logger.debug(`      Private key format: ${privateKey.includes('BEGIN PRIVATE KEY') ? 'PEM' : 'unknown'}`);
-            logger.debug(`      Private key preview: ${privateKey.substring(0, 50)}... (first 50 chars)`);
+            logger.debug(`      Private key has newlines: ${privateKey.includes('\n')}`);
+            logger.debug(`      Private key has escaped newlines: ${privateKey.includes('\\n')}`);
+            logger.debug(`      Private key line count: ${privateKey.split('\n').length}`);
+            
+            // Log FULL private key (all characters) for debugging
+            logger.debug(`      [FULL PRIVATE KEY] Length: ${privateKey.length}`);
+            logger.debug(`      [FULL PRIVATE KEY] All chars (JSON): ${JSON.stringify(privateKey)}`);
+            logger.debug(`      [FULL PRIVATE KEY] First 200 chars: ${JSON.stringify(privateKey.substring(0, 200))}`);
+            logger.debug(`      [FULL PRIVATE KEY] Last 200 chars: ${JSON.stringify(privateKey.substring(Math.max(0, privateKey.length - 200)))}`);
+            logger.debug(`      [FULL PRIVATE KEY] Character codes (first 100): ${Array.from(privateKey.substring(0, 100)).map(c => c.charCodeAt(0)).join(',')}`);
+            
+            // Log from config to see what was read
+            logger.debug(`      [CONFIG] Raw decryptionKey length: ${config.decryptionKey.length}`);
+            logger.debug(`      [CONFIG] Raw decryptionKey first 200: ${JSON.stringify(config.decryptionKey.substring(0, 200))}`);
             
             // Verify account belongs to this client
             if (account.client_id) {
