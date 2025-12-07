@@ -100,11 +100,11 @@ async function main() {
     console.log(`Retries: ${result1.retryCount}`);
 
     // Wait a bit
-    await page.waitForTimeout(2000);
+    await new Promise(resolve => setTimeout(resolve, 2000));
 
     // Go back
     await page.goBack();
-    await page.waitForTimeout(1000);
+    await new Promise(resolve => setTimeout(resolve, 1000));
 
     // Test 2: Failed action (to demonstrate error logging)
     console.log('\n═══════════════════════════════════════');

@@ -535,7 +535,7 @@ export class WorkflowExecutor {
    * @param {number} ms - Milliseconds to sleep
    */
   async sleep(ms) {
-    await this.page.waitForTimeout(ms);
+    return new Promise(resolve => setTimeout(resolve, ms));
   }
 
   /**

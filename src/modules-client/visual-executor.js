@@ -616,7 +616,7 @@ export class VisualActionExecutor {
       
       // Wait 100-300ms between hover and click (randomized)
       const hoverDelay = 100 + Math.random() * 200;
-      await this.page.waitForTimeout(Math.round(hoverDelay));
+      await new Promise(resolve => setTimeout(resolve, Math.round(hoverDelay)));
 
       // Click using Puppeteer mouse API
       await this.page.mouse.click(finalX, finalY);

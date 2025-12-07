@@ -240,7 +240,7 @@ async function executeWorkflow(actions, variables = {}) {
               duration = duration + (Math.random() * variation * 2 - variation);
             }
             console.log(`⏱️  Waiting ${Math.round(duration)}ms...`);
-            await page.waitForTimeout(Math.round(duration));
+            await new Promise(resolve => setTimeout(resolve, Math.round(duration)));
             console.log('✅ Wait complete');
             break;
           }
@@ -285,7 +285,7 @@ async function executeWorkflow(actions, variables = {}) {
         // Small delay between actions for human-like behavior
         if (i < actions.length - 1 && action.type !== 'wait') {
           const delay = 500 + Math.random() * 500; // 500-1000ms
-          await page.waitForTimeout(delay);
+          await new Promise(resolve => setTimeout(resolve, delay));
         }
 
       } catch (error) {

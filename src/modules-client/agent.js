@@ -14,6 +14,7 @@ import { logger } from './logger.js';
 import { pollPendingJobs, sendHeartbeat, updateJobStatus, registerClient, pingApi, checkClientRegistration } from './poller.js';
 import { WorkflowExecutor } from './workflow-executor.js';
 import puppeteer from 'puppeteer-core';
+import { PLATFORM_CONFIG } from '../modules-recorder/config/platform.mjs';
 // Browser finder - will be available as browser.mjs in bundled package
 // package.js copies browser.mjs to the bundled directory
 // Try local import first (bundled), fallback to source (development)
@@ -124,6 +125,41 @@ function handleDeepLink() {
 }
 
 /**
+ * Configure viewport based on workflow platform
+ * @param {Object} page - Puppeteer page instance
+ * @param {string} platform - Platform name (instagram, facebook, twitter, etc.)
+ */
+async function configureViewport(page, platform) {
+  const platformConfig = PLATFORM_CONFIG[platform] || PLATFORM_CONFIG.default;
+  
+  if (platformConfig.useMobileViewport) {
+    logger.info(`📱 Configuring mobile viewport for ${platform}`);
+    await page.emulate({
+      name: 'iPhone 12',
+      viewport: {
+        width: 390,
+        height: 844,
+        deviceScaleFactor: 3,
+        isMobile: true,
+        hasTouch: true,
+      },
+      userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 14_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0 Mobile/15E148 Safari/604.1',
+    });
+    
+    // Verify viewport was set correctly
+    const viewport = await page.viewport();
+    logger.info(`   Viewport set to: ${viewport.width}x${viewport.height} (mobile)`);
+  } else {
+    logger.info(`🖥️  Configuring desktop viewport for ${platform}`);
+    await page.setViewport({ width: 1280, height: 720 });
+    
+    // Verify viewport was set correctly
+    const viewport = await page.viewport();
+    logger.info(`   Viewport set to: ${viewport.width}x${viewport.height} (desktop)`);
+  }
+}
+
+/**
  * Execute a job workflow
  */
 async function executeJob(job) {
@@ -136,6 +172,18 @@ async function executeJob(job) {
   let page = null;
   
   try {
+    // Get workflow from job content (needed for platform detection)
+    let workflow = job.content?.workflow || job.content;
+    
+    if (!workflow) {
+      logger.error(`Job ${job.id} has no workflow in content. Content keys:`, Object.keys(job.content || {}));
+      throw new Error('Invalid workflow in job content: workflow is missing');
+    }
+    
+    // Extract platform for viewport configuration
+    const platform = workflow?.platform || 'default';
+    logger.info(`Platform detected: ${platform}`);
+    
     // Find browser
     let browserPath = config.browserPath;
     if (!browserPath || !existsSync(browserPath)) {
@@ -160,7 +208,9 @@ async function executeJob(job) {
     });
     
     page = await browser.newPage();
-    await page.setViewport({ width: 1920, height: 1080 });
+    
+    // Configure viewport based on platform (mobile for Instagram/Facebook, desktop for others)
+    await configureViewport(page, platform);
     
     // Create workflow executor
     const executor = new WorkflowExecutor(page, {
@@ -169,9 +219,6 @@ async function executeJob(job) {
       enableRetry: true,
       maxRetries: 3,
     });
-    
-    // Get workflow from job content
-    let workflow = job.content?.workflow || job.content;
     
     if (!workflow) {
       logger.error(`Job ${job.id} has no workflow in content. Content keys:`, Object.keys(job.content || {}));
