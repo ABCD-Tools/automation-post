@@ -5,32 +5,93 @@ REM Returns error codes: 0 = all OK, 1 = errors found
 
 setlocal enabledelayedexpansion
 
+REM Enable echo to see all commands (for debugging)
+REM @echo on
+
 REM Get the directory where this batch file is located
 set "SCRIPT_DIR=%~dp0"
 REM Remove trailing backslash
 if "%SCRIPT_DIR:~-1%"=="\" set "SCRIPT_DIR=%SCRIPT_DIR:~0,-1%"
 
 REM Change to script directory first to establish working directory
+echo [DEBUG] Attempting to change to script directory: %SCRIPT_DIR%
 cd /d "%SCRIPT_DIR%" 2>nul
 if errorlevel 1 (
-    echo ERROR: Cannot access script directory: %SCRIPT_DIR%
+    echo.
+    echo ========================================
+    echo ERROR: Cannot access script directory!
+    echo ========================================
+    echo.
+    echo Script directory: %SCRIPT_DIR%
+    echo.
+    echo This error occurred before any checks could be performed.
+    echo Please verify the installation is complete and try again.
+    echo.
+    pause
+    exit /b 1
+)
+
+REM Verify we're in the correct directory
+if not exist "%SCRIPT_DIR%" (
+    echo.
+    echo ========================================
+    echo ERROR: Script directory does not exist!
+    echo ========================================
+    echo.
+    echo Script directory: %SCRIPT_DIR%
+    echo.
     pause
     exit /b 1
 )
 
 REM Check if we're in script/ subdirectory (check.bat is in agents/script/)
 REM Look for agents/ root indicators: package.json, modules-client, or start_agent.bat
+set "AGENTS_DIR="
+
 if exist "..\package.json" (
     REM We're in script/, go up to agents/ root
-    cd /d ".."
+    cd /d ".." 2>nul
+    if errorlevel 1 (
+        echo.
+        echo ========================================
+        echo ERROR: Cannot navigate to agents directory!
+        echo ========================================
+        echo.
+        echo Failed to change to parent directory from: %SCRIPT_DIR%
+        echo.
+        pause
+        exit /b 1
+    )
     set "AGENTS_DIR=%CD%"
 ) else if exist "..\modules-client" (
     REM We're in script/, go up to agents/ root
-    cd /d ".."
+    cd /d ".." 2>nul
+    if errorlevel 1 (
+        echo.
+        echo ========================================
+        echo ERROR: Cannot navigate to agents directory!
+        echo ========================================
+        echo.
+        echo Failed to change to parent directory from: %SCRIPT_DIR%
+        echo.
+        pause
+        exit /b 1
+    )
     set "AGENTS_DIR=%CD%"
 ) else if exist "..\start_agent.bat" (
     REM We're in script/, go up to agents/ root
-    cd /d ".."
+    cd /d ".." 2>nul
+    if errorlevel 1 (
+        echo.
+        echo ========================================
+        echo ERROR: Cannot navigate to agents directory!
+        echo ========================================
+        echo.
+        echo Failed to change to parent directory from: %SCRIPT_DIR%
+        echo.
+        pause
+        exit /b 1
+    )
     set "AGENTS_DIR=%CD%"
 ) else if exist "package.json" (
     REM We're already in agents/ root
@@ -43,19 +104,94 @@ if exist "..\package.json" (
     set "AGENTS_DIR=%CD%"
 ) else if exist "..\agents\package.json" (
     REM We're outside agents/, navigate to agents/
-    cd /d "..\agents"
+    cd /d "..\agents" 2>nul
+    if errorlevel 1 (
+        echo.
+        echo ========================================
+        echo ERROR: Cannot navigate to agents directory!
+        echo ========================================
+        echo.
+        echo Failed to change to ..\agents from: %SCRIPT_DIR%
+        echo.
+        pause
+        exit /b 1
+    )
     set "AGENTS_DIR=%CD%"
 ) else if exist "agents\package.json" (
     REM agents/ is a subdirectory
-    cd /d "agents"
+    cd /d "agents" 2>nul
+    if errorlevel 1 (
+        echo.
+        echo ========================================
+        echo ERROR: Cannot navigate to agents directory!
+        echo ========================================
+        echo.
+        echo Failed to change to agents\ subdirectory from: %SCRIPT_DIR%
+        echo.
+        pause
+        exit /b 1
+    )
     set "AGENTS_DIR=%CD%"
 ) else (
     REM Last resort: assume current directory is agents/ root
     set "AGENTS_DIR=%CD%"
+    echo.
+    echo ========================================
+    echo WARNING: Could not detect agents directory structure
+    echo ========================================
+    echo.
+    echo Using current directory as agents root: %AGENTS_DIR%
+    echo.
+    echo If this is incorrect, please ensure:
+    echo   - package.json exists in agents/ root
+    echo   - modules-client/ directory exists
+    echo   - start_agent.bat exists in agents/ root
+    echo.
 )
 
 REM Ensure we're in the agents directory
-cd /d "%AGENTS_DIR%"
+if not defined AGENTS_DIR (
+    echo.
+    echo ========================================
+    echo ERROR: Failed to determine agents directory!
+    echo ========================================
+    echo.
+    echo Script directory: %SCRIPT_DIR%
+    echo Current directory: %CD%
+    echo.
+    echo This is a critical error. Please check the installation.
+    echo.
+    pause
+    exit /b 1
+)
+
+cd /d "%AGENTS_DIR%" 2>nul
+if errorlevel 1 (
+    echo.
+    echo ========================================
+    echo ERROR: Cannot change to agents directory!
+    echo ========================================
+    echo.
+    echo Agents directory: %AGENTS_DIR%
+    echo.
+    echo This directory may not exist or may be inaccessible.
+    echo.
+    pause
+    exit /b 1
+)
+
+REM Verify agents directory exists and is accessible
+if not exist "%AGENTS_DIR%" (
+    echo.
+    echo ========================================
+    echo ERROR: Agents directory does not exist!
+    echo ========================================
+    echo.
+    echo Agents directory: %AGENTS_DIR%
+    echo.
+    pause
+    exit /b 1
+)
 
 set "NODE_EXE=%AGENTS_DIR%\node.exe"
 set "PNPM_EXE=%AGENTS_DIR%\pnpm.exe"
@@ -81,11 +217,18 @@ if exist "%NODE_EXE%" (
     "%NODE_EXE%" --version >nul 2>&1
     if errorlevel 1 (
         echo   ✗ Node.js found but not working
+        echo     The file exists but cannot execute. It may be corrupted.
         set /a ERRORS+=1
         set "ERROR_NODE=1"
     ) else (
-        for /f "tokens=*" %%i in ('"%NODE_EXE%" --version') do set NODE_VERSION=%%i
-        echo   ✓ Node.js version: !NODE_VERSION!
+        for /f "tokens=*" %%i in ('"%NODE_EXE%" --version 2^>nul') do set NODE_VERSION=%%i
+        if defined NODE_VERSION (
+            echo   ✓ Node.js version: !NODE_VERSION!
+        ) else (
+            echo   ⚠ Node.js found but version check failed
+            set /a ERRORS+=1
+            set "ERROR_NODE=1"
+        )
     )
 ) else (
     echo   ✗ Node.js not found
@@ -102,11 +245,18 @@ if exist "%PNPM_EXE%" (
     "%PNPM_EXE%" --version >nul 2>&1
     if errorlevel 1 (
         echo   ✗ pnpm found but not working
+        echo     The file exists but cannot execute. It may be corrupted.
         set /a ERRORS+=1
         set "ERROR_PNPM=1"
     ) else (
-        for /f "tokens=*" %%i in ('"%PNPM_EXE%" --version') do set PNPM_VERSION=%%i
-        echo   ✓ pnpm version: !PNPM_VERSION!
+        for /f "tokens=*" %%i in ('"%PNPM_EXE%" --version 2^>nul') do set PNPM_VERSION=%%i
+        if defined PNPM_VERSION (
+            echo   ✓ pnpm version: !PNPM_VERSION!
+        ) else (
+            echo   ⚠ pnpm found but version check failed
+            set /a ERRORS+=1
+            set "ERROR_PNPM=1"
+        )
     )
 ) else (
     echo   ✗ pnpm not found
@@ -137,6 +287,7 @@ if exist "%ENV_FILE%" (
     findstr /C:"CLIENT_ID=" "%ENV_FILE%" >nul 2>&1
     if errorlevel 1 (
         echo   ✗ CLIENT_ID not found in .env
+        echo     The .env file exists but is missing CLIENT_ID
         set /a ERRORS+=1
         set "ERROR_ENV=1"
     ) else (
@@ -146,6 +297,7 @@ if exist "%ENV_FILE%" (
     findstr /C:"API_TOKEN=" "%ENV_FILE%" >nul 2>&1
     if errorlevel 1 (
         echo   ✗ API_TOKEN not found in .env
+        echo     The .env file exists but is missing API_TOKEN
         set /a ERRORS+=1
         set "ERROR_ENV=1"
     ) else (
@@ -155,6 +307,7 @@ if exist "%ENV_FILE%" (
     findstr /C:"ENCRYPTION_KEY=" "%ENV_FILE%" >nul 2>&1
     if errorlevel 1 (
         echo   ✗ ENCRYPTION_KEY not found in .env
+        echo     The .env file exists but is missing ENCRYPTION_KEY
         set /a ERRORS+=1
         set "ERROR_ENV=1"
     ) else (

@@ -1,30 +1,9 @@
 @echo off
-REM ABCD Tools - Start Agent
-REM Starts the agent with proper checks and auto-fix
-
+chcp 65001 >nul 2>&1
 setlocal enabledelayedexpansion
 
-REM Get the directory where this batch file is located
-set "SCRIPT_DIR=%~dp0"
-cd /d "%SCRIPT_DIR%"
-
-REM Check if we're in agents/ subdirectory, if so go up one level
-if exist "%SCRIPT_DIR%..\agents" (
-    set "ROOT_DIR=%SCRIPT_DIR%.."
-    cd /d "%ROOT_DIR%"
-) else (
-    set "ROOT_DIR=%SCRIPT_DIR%"
-)
-
-REM Check if we're in the agents folder itself
-if exist "%ROOT_DIR%\agents" (
-    set "AGENTS_DIR=%ROOT_DIR%\agents"
-) else if "%ROOT_DIR:~-7%"=="\agents" (
-    set "AGENTS_DIR=%ROOT_DIR%"
-) else (
-    set "AGENTS_DIR=%ROOT_DIR%"
-)
-
+set "AGENTS_DIR=%~dp0"
+if "%AGENTS_DIR:~-1%"=="\" set "AGENTS_DIR=%AGENTS_DIR:~0,-1%"
 cd /d "%AGENTS_DIR%"
 
 echo ========================================
@@ -34,247 +13,257 @@ echo.
 echo Working directory: %AGENTS_DIR%
 echo.
 
-REM Step 1: Run check.bat (first check, checkCount = 1)
-echo [Step 1/6] Running initial installation check...
+REM ============================================================
+REM STEP 1: Check Installation
+REM ============================================================
+echo [Step 1/2] Checking installation...
 echo.
-REM check.bat is in script/ subdirectory
-if exist "%AGENTS_DIR%\script\check.bat" (
-    call "%AGENTS_DIR%\script\check.bat"
-) else if exist "%AGENTS_DIR%\check.bat" (
-    call "%AGENTS_DIR%\check.bat"
-) else (
-    echo ERROR: check.bat not found!
+
+if not exist "%AGENTS_DIR%\script\check.bat" (
+    echo [ERROR] check.bat not found!
+    echo.
     pause
     exit /b 1
 )
-set "CHECK_RESULT=%errorlevel%"
-set "CHECK_COUNT=1"
 
-if %CHECK_RESULT% EQU 0 (
-    echo.
-    echo ✓ All checks passed on first attempt!
+REM Call check.bat in silent mode
+call "%AGENTS_DIR%\script\check.bat" silent
+set "CHECK_RESULT=!errorlevel!"
+
+if !CHECK_RESULT! EQU 0 (
+    echo [OK] All checks passed!
     goto :start_agent
 )
 
-REM Step 2: List all errors and fix them procedurally
+REM ============================================================
+REM Issues Found - Show Details and Ask User
+REM ============================================================
 echo.
-echo [Step 2/6] Analyzing errors and fixing them...
+echo ========================================
+echo Issues Detected!
+echo ========================================
 echo.
 
-REM Check what needs to be fixed
 set "NEED_NODE=0"
 set "NEED_PNPM=0"
-set "NEED_NODE_MODULES=0"
+set "NEED_DEPS=0"
 set "NEED_ENV=0"
 
 if not exist "%AGENTS_DIR%\node.exe" (
+    echo   [X] Node.js - MISSING
     set "NEED_NODE=1"
-    echo   [FIX] Node.js (portable) missing - will install
+) else (
+    echo   [OK] Node.js - Found
 )
 
 if not exist "%AGENTS_DIR%\pnpm.exe" (
+    echo   [X] pnpm - MISSING
     set "NEED_PNPM=1"
-    echo   [FIX] pnpm (portable) missing - will install
+) else (
+    echo   [OK] pnpm - Found
 )
 
 if not exist "%AGENTS_DIR%\node_modules" (
-    set "NEED_NODE_MODULES=1"
-    echo   [FIX] node_modules missing - will install
+    echo   [X] Dependencies - MISSING
+    set "NEED_DEPS=1"
+) else (
+    echo   [OK] Dependencies - Found
 )
 
 if not exist "%AGENTS_DIR%\.env" (
+    echo   [X] .env file - MISSING
     set "NEED_ENV=1"
-    echo   [FIX] .env file missing - cannot auto-fix, please reinstall
-)
-
-REM Step 3: Fix errors procedurally
-echo.
-echo [Step 3/6] Fixing errors...
-echo.
-
-REM Fix 1: Install Node.js and pnpm if needed
-set "SETUP_SCRIPT="
-if exist "%AGENTS_DIR%\script\setup_agents.bat" (
-    set "SETUP_SCRIPT=%AGENTS_DIR%\script\setup_agents.bat"
-) else if exist "%AGENTS_DIR%\setup_agents.bat" (
-    set "SETUP_SCRIPT=%AGENTS_DIR%\setup_agents.bat"
 ) else (
-    echo   ✗ ERROR: setup_agents.bat not found!
-    pause
-    exit /b 1
-)
-
-if !NEED_NODE! EQU 1 if !NEED_PNPM! EQU 1 (
-    echo   Installing Node.js and pnpm...
-    call "!SETUP_SCRIPT!"
+    findstr /C:"CLIENT_ID=" "%AGENTS_DIR%\.env" >nul 2>&1
     if errorlevel 1 (
-        echo   ✗ Failed to install Node.js and pnpm
-        echo   Please run setup_agents.bat manually
-        pause
-        exit /b 1
-    )
-) else if !NEED_NODE! EQU 1 (
-    echo   Installing Node.js...
-    REM Run setup_agents.bat which will skip pnpm if it exists
-    call "!SETUP_SCRIPT!"
-    if errorlevel 1 (
-        echo   ✗ Failed to install Node.js
-        pause
-        exit /b 1
-    )
-) else if !NEED_PNPM! EQU 1 (
-    echo   Installing pnpm...
-    REM Run setup_agents.bat which will skip Node.js if it exists
-    call "!SETUP_SCRIPT!"
-    if errorlevel 1 (
-        echo   ✗ Failed to install pnpm
-        pause
-        exit /b 1
-    )
-)
-
-REM Fix 2: Install node_modules if needed
-if !NEED_NODE_MODULES! EQU 1 (
-    echo   Installing dependencies...
-    if defined SETUP_SCRIPT (
-        REM setup_agents.bat already installs dependencies
-        call "!SETUP_SCRIPT!"
+        echo   [X] .env file - INCOMPLETE
+        set "NEED_ENV=1"
     ) else (
-        REM Fallback: try to run pnpm install directly
-        if exist "%AGENTS_DIR%\pnpm.exe" (
-            cd /d "%AGENTS_DIR%"
-            set "PNPM_NODE_PATH=%AGENTS_DIR%\node.exe"
-            "%AGENTS_DIR%\pnpm.exe" install
-            if errorlevel 1 (
-                echo   ✗ Failed to install dependencies
-                pause
-                exit /b 1
-            )
-        ) else (
-            echo   ✗ Cannot install dependencies - pnpm not found
-            pause
-            exit /b 1
-        )
+        echo   [OK] .env file - Found
     )
-    if errorlevel 1 (
-        echo   ✗ Failed to install dependencies
+)
+
+echo.
+echo ========================================
+
+REM If .env is missing, cannot continue
+if %NEED_ENV% EQU 1 (
+    echo.
+    echo [CRITICAL ERROR]
+    echo .env file is missing or incomplete!
+    echo.
+    echo This file contains your API credentials and must exist.
+    echo Please reinstall the agent or restore your .env file.
+    echo.
+    echo Location: %AGENTS_DIR%\.env
+    echo.
+    pause
+    exit /b 1
+)
+
+REM If other components missing, ask to install
+set "NEED_INSTALL=0"
+if %NEED_NODE% EQU 1 set "NEED_INSTALL=1"
+if %NEED_PNPM% EQU 1 set "NEED_INSTALL=1"
+if %NEED_DEPS% EQU 1 set "NEED_INSTALL=1"
+
+if %NEED_INSTALL% EQU 1 (
+    echo.
+    echo Some components are missing.
+    echo.
+    echo Do you want to install them now?
+    echo.
+    echo   [Y] Yes - Run setup_agents.bat to install
+    echo   [N] No  - Exit and install manually
+    echo.
+    choice /C YN /N /M "Your choice: "
+    
+    if errorlevel 2 (
+        echo.
+        echo Installation cancelled.
+        echo Please run setup_agents.bat manually when ready.
+        echo.
         pause
         exit /b 1
     )
-)
-
-REM Fix 3: .env file - cannot auto-fix, must be present
-if !NEED_ENV! EQU 1 (
+    
+    REM User chose Yes - run setup
     echo.
-    echo   ✗ ERROR: .env file is missing!
-    echo   This file should have been created during installation.
-    echo   Please reinstall the agent.
-    pause
-    exit /b 1
-)
-
-REM Step 4: Recheck (checkCount = 2, max = 2)
-echo.
-echo [Step 4/6] Rechecking installation (checkCount = 2)...
-echo.
-set /a CHECK_COUNT+=1
-if exist "%AGENTS_DIR%\script\check.bat" (
-    call "%AGENTS_DIR%\script\check.bat"
-) else if exist "%AGENTS_DIR%\check.bat" (
-    call "%AGENTS_DIR%\check.bat"
-) else (
-    echo ERROR: check.bat not found!
-    pause
-    exit /b 1
-)
-set "CHECK_RESULT=%errorlevel%"
-
-if %CHECK_RESULT% NEQ 0 (
+    echo ========================================
+    echo Running Setup
+    echo ========================================
     echo.
-    echo ✗ Some issues still remain after fixing attempts
-    echo Please check the errors above and fix them manually
-    pause
-    exit /b 1
+    
+    if not exist "%AGENTS_DIR%\script\setup_agents.bat" (
+        echo [ERROR] setup_agents.bat not found!
+        echo Location: %AGENTS_DIR%\script\setup_agents.bat
+        echo.
+        pause
+        exit /b 1
+    )
+    
+    call "%AGENTS_DIR%\script\setup_agents.bat"
+    set "SETUP_RESULT=!errorlevel!"
+    
+    if !SETUP_RESULT! NEQ 0 (
+        echo.
+        echo ========================================
+        echo [ERROR] Setup Failed!
+        echo ========================================
+        echo.
+        echo Please check the errors above.
+        echo You may need to:
+        echo   - Check internet connection
+        echo   - Run as administrator
+        echo   - Disable antivirus temporarily
+        echo.
+        pause
+        exit /b 1
+    )
+    
+    REM Verify installation successful
+    echo.
+    echo Verifying installation...
+    call "%AGENTS_DIR%\script\check.bat" silent
+    
+    if errorlevel 1 (
+        echo.
+        echo ========================================
+        echo [WARNING] Some issues remain
+        echo ========================================
+        echo.
+        echo Setup completed but verification failed.
+        echo Check: %AGENTS_DIR%\script\error.log
+        echo.
+        pause
+        exit /b 1
+    )
+    
+    echo [OK] Installation verified!
+    echo.
 )
 
-echo.
-echo ✓ All checks passed after fixes!
-
-REM Step 5: Verify client registration
-echo.
-echo [Step 5/6] Verifying client registration...
-if exist "%AGENTS_DIR%\.env" (
-    echo   ✓ .env file found
-    REM Registration will be verified when agent starts
-    echo   ℹ  Registration will be verified when agent starts
-) else (
-    echo   ✗ .env file not found!
-    echo     This file should have been created during installation.
-    echo     Please reinstall the agent.
-    pause
-    exit /b 1
-)
-
-REM Step 6: Start the agent
+REM ============================================================
+REM STEP 2: Start Agent
+REM ============================================================
 :start_agent
 echo.
-echo [Step 6/6] Starting agent...
+echo [Step 2/2] Starting agent...
 echo.
 
-REM Path to Node.js binary
-set "NODE_EXE=%AGENTS_DIR%\node.exe"
-
-REM Check if node.exe exists
-if not exist "%NODE_EXE%" (
-    echo ERROR: node.exe not found!
+REM Final checks before starting
+if not exist "%AGENTS_DIR%\node.exe" (
+    echo [ERROR] node.exe not found!
     echo Please run setup_agents.bat first.
+    echo.
     pause
     exit /b 1
 )
 
-REM Check if node_modules exists
 if not exist "%AGENTS_DIR%\node_modules" (
-    echo.
-    echo ERROR: node_modules not found!
-    echo Please run setup_agents.bat first to install dependencies.
+    echo [ERROR] node_modules not found!
+    echo Please run setup_agents.bat first.
     echo.
     pause
     exit /b 1
 )
 
-REM Agent script path (should be in modules-client/agent.js)
+if not exist "%AGENTS_DIR%\.env" (
+    echo [ERROR] .env file not found!
+    echo Please reinstall the agent.
+    echo.
+    pause
+    exit /b 1
+)
+
 set "AGENT_SCRIPT=%AGENTS_DIR%\modules-client\agent.js"
-
 if not exist "%AGENT_SCRIPT%" (
-    echo ERROR: agent.js not found!
-    echo Expected location: %AGENT_SCRIPT%
+    echo [ERROR] agent.js not found!
+    echo Location: %AGENT_SCRIPT%
+    echo.
+    echo Please reinstall the agent.
+    echo.
     pause
     exit /b 1
 )
 
-REM Create logs directory if it doesn't exist
-if not exist "%AGENTS_DIR%\logs" (
-    mkdir "%AGENTS_DIR%\logs"
-)
+REM Create logs directory
+if not exist "%AGENTS_DIR%\logs" mkdir "%AGENTS_DIR%\logs" 2>nul
 
-echo Starting ABCD Tools Client...
-echo Using Node.js: %NODE_EXE%
-echo Agent script: %AGENT_SCRIPT%
-echo Logs directory: %AGENTS_DIR%\logs
+echo ========================================
+echo Starting ABCD Tools Client Agent
+echo ========================================
+echo.
+echo The agent will now:
+echo   - Connect to API server
+echo   - Verify registration
+echo   - Begin polling for jobs
+echo.
+echo Log: %AGENTS_DIR%\logs\agent.log
+echo.
+echo Press Ctrl+C to stop the agent
+echo.
+echo ========================================
 echo.
 
-REM Start the agent (redirect stderr to logs/agent.log)
-cd /d "%AGENTS_DIR%"
-"%NODE_EXE%" "%AGENT_SCRIPT%" 2>>"%AGENTS_DIR%\logs\agent.log"
+REM Start the agent
+"%AGENTS_DIR%\node.exe" "%AGENT_SCRIPT%" 2>>"%AGENTS_DIR%\logs\agent.log"
 
-set "EXIT_CODE=%errorlevel%"
+set "EXIT_CODE=!errorlevel!"
 
-if %EXIT_CODE% NEQ 0 (
+echo.
+echo ========================================
+echo Agent Stopped
+echo ========================================
+echo.
+
+if !EXIT_CODE! NEQ 0 (
+    echo Exit code: !EXIT_CODE!
     echo.
-    echo Agent exited with error code: %EXIT_CODE%
-    echo Check logs\agent.log for details.
-    pause
+    echo Check log for details:
+    echo %AGENTS_DIR%\logs\agent.log
+    echo.
 )
 
-exit /b %EXIT_CODE%
-
+pause
+exit /b !EXIT_CODE!
