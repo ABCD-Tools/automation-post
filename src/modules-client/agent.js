@@ -337,6 +337,9 @@ async function executeJob(job) {
           logger.info(`   Username: ${username}`);
         }
         
+        // MVP: Use password directly (no decryption)
+        // TODO: Re-enable RSA decryption when ready
+        /*
         // Decrypt password if available
         if (account.encrypted_password) {
           try {
@@ -386,6 +389,12 @@ async function executeJob(job) {
               privateKey, // Use DECRYPTION_KEY (PRIVATE_KEY)
               logger // Pass logger for detailed debugging
             );
+        */
+        
+        // MVP: Use password directly from database (stored as plain text)
+        if (account.encrypted_password) {
+          logger.info(`   Using password from account (plain text for MVP)`);
+          const decryptedPassword = account.encrypted_password; // Password is stored as plain text
             
             templateVariables.password = decryptedPassword;
             logger.info(`   Password decrypted successfully (length: ${decryptedPassword.length} chars)`);

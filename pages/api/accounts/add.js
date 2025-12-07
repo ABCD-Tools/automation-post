@@ -51,11 +51,16 @@ export default async function handler(req, res) {
       return res.status(401).json({ error: 'Unauthorized' });
     }
 
-    const { platform, username, encryptedPassword, clientId } = req.body || {};
+    // MVP: Accept plain text password
+    // TODO: Re-enable encryption when ready
+    const { platform, username, encryptedPassword, password, clientId } = req.body || {};
 
-    if (!platform || !username || !encryptedPassword) {
+    // Support both encryptedPassword (for backward compatibility) and password (MVP)
+    const accountPassword = password || encryptedPassword;
+
+    if (!platform || !username || !accountPassword) {
       return res.status(400).json({ 
-        error: 'Platform, username, and encryptedPassword are required' 
+        error: 'Platform, username, and password are required' 
       });
     }
 
@@ -68,7 +73,7 @@ export default async function handler(req, res) {
     const result = await addAccount(user.id, {
       platform,
       username,
-      encryptedPassword,
+      encryptedPassword: accountPassword, // MVP: Store as plain text
       clientId,
     });
 

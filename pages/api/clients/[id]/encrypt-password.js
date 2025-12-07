@@ -58,6 +58,9 @@ export default async function handler(req, res) {
       });
     }
 
+    // MVP: Store password as plain text (no encryption)
+    // TODO: Re-enable RSA encryption when ready
+    /*
     // Encrypt password using client's ENCRYPTION_KEY (RSA public key)
     // Asymmetric encryption: ENCRYPTION_KEY = PUBLIC_KEY (stored in server)
     const publicKeyPem = client.encryption_key;
@@ -131,9 +134,11 @@ export default async function handler(req, res) {
       
       encryptedPassword = combined.toString('base64');
     }
+    */
 
+    // MVP: Return password as-is (plain text)
     return res.status(200).json({
-      encryptedPassword,
+      encryptedPassword: password, // Store as plain text for MVP
     });
   } catch (err) {
     console.error('Encrypt password error:', err);

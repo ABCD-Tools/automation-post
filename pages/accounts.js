@@ -75,6 +75,9 @@ export default function Accounts() {
     try {
       setAdding(true);
       
+      // MVP: Send password as plain text (no encryption)
+      // TODO: Re-enable server-side encryption when ready
+      /*
       // Encrypt password server-side using client's ENCRYPTION_KEY
       // This eliminates the need for browser to handle encryption keys
       const encryptResponse = await postJson(`/api/clients/${newAccount.clientId}/encrypt-password`, {
@@ -84,11 +87,12 @@ export default function Accounts() {
       if (!encryptResponse.encryptedPassword) {
         throw new Error('Failed to encrypt password');
       }
+      */
       
       const response = await postJson("/api/accounts/add", {
         platform: newAccount.platform,
         username: newAccount.username,
-        encryptedPassword: encryptResponse.encryptedPassword,
+        password: newAccount.password, // MVP: Send as plain text
         clientId: newAccount.clientId,
       });
 
@@ -138,6 +142,9 @@ export default function Accounts() {
 
       // Only update password if it was changed
       if (editingAccount.password) {
+        // MVP: Send password as plain text (no encryption)
+        // TODO: Re-enable server-side encryption when ready
+        /*
         // Encrypt password server-side using client's ENCRYPTION_KEY
         const encryptResponse = await postJson(`/api/clients/${editingAccount.clientId}/encrypt-password`, {
           password: editingAccount.password,
@@ -148,6 +155,8 @@ export default function Accounts() {
         }
 
         updateData.encryptedPassword = encryptResponse.encryptedPassword;
+        */
+        updateData.encryptedPassword = editingAccount.password; // MVP: Store as plain text
       }
 
       await postJson(`/api/accounts/${editingAccount.id}`, updateData, 'PUT');
