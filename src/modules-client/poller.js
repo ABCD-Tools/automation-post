@@ -183,18 +183,30 @@ export async function submitExecutionReport(report) {
 
 /**
  * Check if client is already registered
+ * This actually calls registerClient() which will update if exists or create if doesn't exist
  */
 export async function checkClientRegistration() {
-  // Try to ping the API - if it works, client is registered
-  const pingResult = await pingApi();
-  if (pingResult) {
-    logger.info('Client is already registered and connected');
-    return true;
+  // Call registerClient() to check/ensure registration status
+  // The register endpoint is idempotent - it updates if client exists, creates if it doesn't
+  const registrationResult = await registerClient();
+  
+  if (registrationResult) {
+    // Check the response message to determine if it was already registered or newly registered
+    if (registrationResult.message === 'Client updated successfully') {
+      logger.info('Client is already registered and was updated');
+      return true;
+    } else if (registrationResult.message === 'Client registered successfully') {
+      logger.info('Client was newly registered');
+      return true;
+    } else {
+      // Unknown response, but registration succeeded
+      logger.info('Client registration check completed');
+      return true;
+    }
   }
   
-  // If ping fails, check if it's an auth error (client exists but wrong token)
-  // or network error (client might not exist)
-  logger.debug('Client registration status unknown - ping failed');
+  // Registration failed
+  logger.debug('Client registration check failed');
   return false;
 }
 
