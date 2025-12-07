@@ -39,21 +39,61 @@ export default async function handler(req, res) {
 
     const supabase = createSupabaseServiceRoleClient();
 
-    // Verify client exists and token matches
-    const { data: client, error: checkError } = await supabase
+    // First, check if client exists (without token validation)
+    const { data: clientExists, error: clientCheckError } = await supabase
       .from('clients')
-      .select('id, user_id, client_id, api_token, token_expires_at, status')
+      .select('id, client_id, api_token')
       .eq('client_id', clientId)
-      .eq('api_token', apiToken)
-      .single();
+      .maybeSingle();
 
-    if (checkError || !client) {
-      console.error('[ERROR] Heartbeat: Invalid client ID or API token', {
+    if (clientCheckError) {
+      console.error('[ERROR] Heartbeat: Error checking client existence', {
+        clientId,
+        error: clientCheckError.message,
+        errorCode: clientCheckError.code,
+        errorDetails: clientCheckError,
+      });
+      return res.status(500).json({ error: 'Database error while checking client' });
+    }
+
+    if (!clientExists) {
+      console.error('[ERROR] Heartbeat: Client not found', {
         clientId,
         hasToken: !!apiToken,
-        error: checkError?.message,
+        tokenLength: apiToken?.length,
       });
       return res.status(401).json({ error: 'Invalid client ID or API token' });
+    }
+
+    // Now verify the API token matches
+    if (clientExists.api_token !== apiToken) {
+      console.error('[ERROR] Heartbeat: API token mismatch', {
+        clientId,
+        hasToken: !!apiToken,
+        tokenLength: apiToken?.length,
+        storedTokenLength: clientExists.api_token?.length,
+        tokenMatches: clientExists.api_token === apiToken,
+        // Don't log actual tokens for security, but log first/last few chars for debugging
+        tokenPrefix: apiToken?.substring(0, 8),
+        storedTokenPrefix: clientExists.api_token?.substring(0, 8),
+      });
+      return res.status(401).json({ error: 'Invalid client ID or API token' });
+    }
+
+    // Get full client data for token expiration check
+    const { data: client, error: fetchError } = await supabase
+      .from('clients')
+      .select('id, user_id, client_id, api_token, token_expires_at, status')
+      .eq('id', clientExists.id)
+      .single();
+
+    if (fetchError || !client) {
+      console.error('[ERROR] Heartbeat: Failed to fetch client data', {
+        clientId,
+        error: fetchError?.message,
+        errorDetails: fetchError,
+      });
+      return res.status(500).json({ error: 'Failed to fetch client data' });
     }
 
     // Check if token is expired
