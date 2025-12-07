@@ -1,33 +1,18 @@
 /**
- * Client-side encryption/decryption utilities for Node.js
- * Uses the same encryption format as web UI (AES-GCM with PBKDF2)
+ * Client-side decryption utilities for Node.js
+ * Uses RSA asymmetric decryption (DECRYPTION_KEY = PRIVATE_KEY)
  */
 
 import crypto from 'crypto';
 
 /**
- * Derive key from password using PBKDF2
- * @param {string} password - Password to derive key from
- * @param {Buffer} salt - Salt for key derivation
- * @returns {Promise<Buffer>} Derived encryption key
- */
-async function deriveKeyFromPassword(password, salt) {
-  return new Promise((resolve, reject) => {
-    crypto.pbkdf2(password, salt, 100000, 32, 'sha256', (err, derivedKey) => {
-      if (err) reject(err);
-      else resolve(derivedKey);
-    });
-  });
-}
-
-/**
- * Decrypt data using AES-GCM (compatible with web UI encryption)
- * @param {string} encryptedData - Encrypted data (base64 encoded, includes salt and IV)
- * @param {string} password - Password for decryption (client's DECRYPTION_KEY)
+ * Decrypt data using RSA private key (asymmetric decryption)
+ * @param {string} encryptedData - Encrypted data (base64 encoded)
+ * @param {string} privateKeyPem - Private key in PEM format (client's DECRYPTION_KEY)
  * @param {Object} debugLogger - Optional logger for debugging
  * @returns {Promise<string>} Decrypted data
  */
-export async function decrypt(encryptedData, password, debugLogger = null) {
+export async function decrypt(encryptedData, privateKeyPem, debugLogger = null) {
   const log = debugLogger || {
     debug: () => {},
     error: () => {},
@@ -39,80 +24,85 @@ export async function decrypt(encryptedData, password, debugLogger = null) {
     log.error('   Decrypt validation: encryptedData is missing');
     throw error;
   }
-  if (!password) {
-    const error = new Error('Password is required for decryption');
-    log.error('   Decrypt validation: password is missing');
+  if (!privateKeyPem) {
+    const error = new Error('Private key is required for decryption');
+    log.error('   Decrypt validation: privateKeyPem is missing');
     throw error;
   }
 
   try {
-    log.debug(`   Decrypt input: encryptedData length=${encryptedData.length}, password length=${password.length}`);
+    log.debug(`   Decrypt input: encryptedData length=${encryptedData.length} chars, privateKey length=${privateKeyPem.length} chars`);
     
-    // Validate password format (should be hex string, 64 chars = 32 bytes)
-    const isHex = /^[0-9a-fA-F]+$/.test(password);
-    log.debug(`   Password format: ${isHex ? 'hex' : 'non-hex'}, length=${password.length} chars`);
-    if (password.length !== 64) {
-      log.warn(`   Password length is ${password.length}, expected 64 (32 bytes in hex)`);
+    // Validate private key format
+    if (!privateKeyPem.includes('-----BEGIN PRIVATE KEY-----')) {
+      log.error(`   Invalid private key format: expected PEM format with 'BEGIN PRIVATE KEY'`);
+      throw new Error('Invalid private key format. Expected RSA private key in PEM format.');
     }
     
     // Decode from base64
-    let combined;
+    let encryptedBuffer;
     try {
-      combined = Buffer.from(encryptedData, 'base64');
-      log.debug(`   Base64 decoded: combined buffer length=${combined.length} bytes`);
+      encryptedBuffer = Buffer.from(encryptedData, 'base64');
+      log.debug(`   Base64 decoded: buffer length=${encryptedBuffer.length} bytes`);
     } catch (base64Error) {
       log.error(`   Base64 decode failed: ${base64Error.message}`);
       throw new Error(`Invalid base64 data: ${base64Error.message}`);
     }
 
-    // Validate minimum size: salt (16) + IV (12) + auth tag (16) = 44 bytes minimum
-    if (combined.length < 44) {
-      const error = new Error(`Encrypted data too short: ${combined.length} bytes (minimum 44 bytes required)`);
-      log.error(`   ${error.message}`);
-      log.error(`   Expected format: [salt:16 bytes][IV:12 bytes][encrypted data + auth tag:16+ bytes]`);
-      throw error;
-    }
-
-    // Extract salt, iv, and encrypted data
-    // Format: [salt (16 bytes)][IV (12 bytes)][encrypted data with auth tag]
-    const salt = combined.slice(0, 16);
-    const iv = combined.slice(16, 28);
-    const encrypted = combined.slice(28);
-
-    log.debug(`   Extracted components: salt=${salt.length} bytes, IV=${iv.length} bytes, encrypted=${encrypted.length} bytes`);
-
-    // Validate encrypted data has auth tag (minimum 16 bytes for auth tag)
-    if (encrypted.length < 16) {
-      const error = new Error(`Encrypted data too short: ${encrypted.length} bytes (minimum 16 bytes for auth tag)`);
-      log.error(`   ${error.message}`);
-      throw error;
-    }
-
-    // Derive key from password using PBKDF2
-    log.debug(`   Deriving key from password using PBKDF2 (100000 iterations, SHA-256)...`);
-    let key;
-    try {
-      key = await deriveKeyFromPassword(password, salt);
-      log.debug(`   Key derived successfully: ${key.length} bytes`);
-    } catch (keyError) {
-      log.error(`   Key derivation failed: ${keyError.message}`);
-      throw new Error(`Key derivation failed: ${keyError.message}`);
-    }
-
-    // Extract auth tag (last 16 bytes of encrypted data for AES-GCM)
-    const authTag = encrypted.slice(-16);
-    const encryptedDataOnly = encrypted.slice(0, -16);
-
-    log.debug(`   Auth tag: ${authTag.length} bytes, Encrypted data: ${encryptedDataOnly.length} bytes`);
-
-    // Decrypt using AES-GCM
-    log.debug(`   Creating decipher (AES-256-GCM)...`);
-    const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv);
-    decipher.setAuthTag(authTag);
+    // Check if this is hybrid encryption (first byte indicates encrypted AES key length)
+    // Format: [1 byte: aesKeyLength][encrypted AES key][IV:12 bytes][encrypted data][auth tag:16 bytes]
+    // OR direct RSA encryption (just RSA-encrypted data)
     
-    log.debug(`   Decrypting data...`);
-    let decrypted = decipher.update(encryptedDataOnly, null, 'utf8');
-    decrypted += decipher.final('utf8');
+    let decrypted;
+    
+    if (encryptedBuffer.length > 256 && encryptedBuffer[0] > 0 && encryptedBuffer[0] < 256) {
+      // Hybrid encryption detected (first byte is length of encrypted AES key)
+      log.debug(`   Detected hybrid encryption (RSA + AES-GCM)`);
+      
+      const aesKeyLength = encryptedBuffer[0];
+      const encryptedAesKey = encryptedBuffer.slice(1, 1 + aesKeyLength);
+      const iv = encryptedBuffer.slice(1 + aesKeyLength, 1 + aesKeyLength + 12);
+      const encrypted = encryptedBuffer.slice(1 + aesKeyLength + 12);
+      const authTag = encrypted.slice(-16);
+      const encryptedDataOnly = encrypted.slice(0, -16);
+
+      log.debug(`   Extracted: encrypted AES key=${encryptedAesKey.length} bytes, IV=${iv.length} bytes, encrypted data=${encryptedDataOnly.length} bytes, auth tag=${authTag.length} bytes`);
+
+      // 1. Decrypt AES key with RSA private key
+      log.debug(`   Decrypting AES key with RSA private key...`);
+      const privateKey = crypto.createPrivateKey(privateKeyPem);
+      const aesKey = crypto.privateDecrypt(
+        {
+          key: privateKey,
+          padding: crypto.constants.RSA_PKCS1_OAEP_PADDING,
+          oaepHash: 'sha256',
+        },
+        encryptedAesKey
+      );
+
+      log.debug(`   AES key decrypted: ${aesKey.length} bytes`);
+
+      // 2. Decrypt password with AES-GCM
+      log.debug(`   Decrypting password with AES-GCM...`);
+      const decipher = crypto.createDecipheriv('aes-256-gcm', aesKey, iv);
+      decipher.setAuthTag(authTag);
+      decrypted = decipher.update(encryptedDataOnly, null, 'utf8');
+      decrypted += decipher.final('utf8');
+    } else {
+      // Direct RSA decryption
+      log.debug(`   Detected direct RSA encryption`);
+      
+      const privateKey = crypto.createPrivateKey(privateKeyPem);
+      const decryptedBuffer = crypto.privateDecrypt(
+        {
+          key: privateKey,
+          padding: crypto.constants.RSA_PKCS1_OAEP_PADDING,
+          oaepHash: 'sha256',
+        },
+        encryptedBuffer
+      );
+      decrypted = decryptedBuffer.toString('utf8');
+    }
 
     log.debug(`   Decryption successful: decrypted length=${decrypted.length} chars`);
     return decrypted;
@@ -128,20 +118,20 @@ export async function decrypt(encryptedData, password, debugLogger = null) {
     log.error(`   Decryption error details:`, errorDetails);
     
     // Provide specific error messages for common issues
-    if (error.message.includes('Unsupported state') || error.message.includes('unable to authenticate')) {
+    if (error.message.includes('decryption') || error.message.includes('decrypt')) {
       log.error(`   Possible causes:`);
-      log.error(`     1. Wrong DECRYPTION_KEY - the key doesn't match the one used for encryption`);
-      log.error(`     2. Data was encrypted with a different key or method`);
+      log.error(`     1. Wrong DECRYPTION_KEY (PRIVATE_KEY) - the private key doesn't match the public key used for encryption`);
+      log.error(`     2. Data was encrypted with a different public key`);
       log.error(`     3. Encrypted data is corrupted or incomplete`);
-      log.error(`     4. Auth tag mismatch - data may have been tampered with`);
+      log.error(`     4. Private key format is invalid (expected RSA private key in PEM format)`);
     } else if (error.message.includes('Invalid base64')) {
       log.error(`   Possible causes:`);
       log.error(`     1. Encrypted data is not valid base64`);
       log.error(`     2. Data format is incorrect`);
-    } else if (error.message.includes('too short')) {
+    } else if (error.message.includes('too short') || error.message.includes('too long')) {
       log.error(`   Possible causes:`);
-      log.error(`     1. Encrypted data is incomplete`);
-      log.error(`     2. Data format is incorrect (expected: salt + IV + encrypted data)`);
+      log.error(`     1. Encrypted data is incomplete or corrupted`);
+      log.error(`     2. Data format is incorrect`);
     }
 
     throw new Error(`Decryption failed: ${error.message}`);

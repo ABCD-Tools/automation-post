@@ -65,10 +65,11 @@ export default async function handler(req, res) {
       });
     }
 
-    // Validate encryption keys (must be 32-byte hex strings)
-    if (!/^[0-9a-fA-F]{64}$/.test(encryptionKey) || !/^[0-9a-fA-F]{64}$/.test(decryptionKey)) {
+    // Validate encryption keys (must be RSA keys in PEM format)
+    // ENCRYPTION_KEY should be a public key, DECRYPTION_KEY should be a private key
+    if (!encryptionKey.includes('-----BEGIN PUBLIC KEY-----') || !decryptionKey.includes('-----BEGIN PRIVATE KEY-----')) {
       return res.status(400).json({
-        error: 'Encryption keys must be 32-byte hex strings (64 characters)',
+        error: 'Encryption keys must be RSA keys in PEM format. ENCRYPTION_KEY should be a public key, DECRYPTION_KEY should be a private key.',
       });
     }
 

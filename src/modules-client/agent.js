@@ -342,19 +342,35 @@ async function executeJob(job) {
           try {
             logger.info(`   Decrypting password...`);
             
-            if (!config.decryptionKey) {
-              throw new Error('DECRYPTION_KEY is not configured. Cannot decrypt password.');
+            // Use DECRYPTION_KEY (PRIVATE_KEY) for decryption
+            // Asymmetric encryption: ENCRYPTION_KEY = PUBLIC_KEY (server), DECRYPTION_KEY = PRIVATE_KEY (client)
+            const privateKey = config.decryptionKey;
+            
+            if (!privateKey) {
+              throw new Error('DECRYPTION_KEY (PRIVATE_KEY) is required. Cannot decrypt password.');
             }
             
             // Log encryption details for debugging
-            logger.debug(`   Encryption details:`);
+            logger.debug(`   Decryption details:`);
             logger.debug(`      Encrypted password length: ${account.encrypted_password.length} chars`);
-            logger.debug(`      Decryption key length: ${config.decryptionKey.length} chars`);
-            logger.debug(`      Decryption key format: ${config.decryptionKey.match(/^[0-9a-f]+$/i) ? 'hex' : 'other'}`);
+            logger.debug(`      Using: DECRYPTION_KEY (PRIVATE_KEY)`);
+            logger.debug(`      Private key length: ${privateKey.length} chars`);
+            logger.debug(`      Private key format: ${privateKey.includes('BEGIN PRIVATE KEY') ? 'PEM' : 'unknown'}`);
+            logger.debug(`      Private key preview: ${privateKey.substring(0, 50)}... (first 50 chars)`);
+            
+            // Verify account belongs to this client
+            if (account.client_id) {
+              logger.debug(`      Account client_id: ${account.client_id}`);
+              logger.debug(`      Current client_id: ${config.clientId}`);
+              if (account.client_id !== config.clientId) {
+                logger.warn(`      ⚠️  Account client_id (${account.client_id}) doesn't match current client (${config.clientId})`);
+                logger.warn(`      This may cause decryption to fail if account was encrypted with a different public key`);
+              }
+            }
             
             const decryptedPassword = await decryptAccountPassword(
               account.encrypted_password,
-              config.decryptionKey,
+              privateKey, // Use DECRYPTION_KEY (PRIVATE_KEY)
               logger // Pass logger for detailed debugging
             );
             

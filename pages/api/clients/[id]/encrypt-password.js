@@ -58,35 +58,79 @@ export default async function handler(req, res) {
       });
     }
 
-    // Encrypt password using client's ENCRYPTION_KEY
-    // Use the same encryption method as client-side (AES-GCM with PBKDF2)
-    const encryptionKey = client.encryption_key;
+    // Encrypt password using client's ENCRYPTION_KEY (RSA public key)
+    // Asymmetric encryption: ENCRYPTION_KEY = PUBLIC_KEY (stored in server)
+    const publicKeyPem = client.encryption_key;
 
-    // Generate salt and IV
-    const salt = crypto.randomBytes(16);
-    const iv = crypto.randomBytes(12);
-
-    // Derive key from encryption key using PBKDF2
-    const derivedKey = await new Promise((resolve, reject) => {
-      crypto.pbkdf2(encryptionKey, salt, 100000, 32, 'sha256', (err, key) => {
-        if (err) reject(err);
-        else resolve(key);
+    // Validate public key format
+    if (!publicKeyPem.includes('-----BEGIN PUBLIC KEY-----')) {
+      return res.status(400).json({ 
+        error: 'Invalid public key format. Expected RSA public key in PEM format.' 
       });
-    });
+    }
 
-    // Encrypt using AES-GCM
-    const cipher = crypto.createCipheriv('aes-256-gcm', derivedKey, iv);
-    const encrypted = Buffer.concat([
-      cipher.update(password, 'utf8'),
-      cipher.final()
-    ]);
-    const authTag = cipher.getAuthTag();
+    // For longer passwords, use hybrid encryption (RSA + AES)
+    // RSA can only encrypt up to ~245 bytes (2048-bit key with OAEP)
+    // If password is longer, encrypt an AES key with RSA, then encrypt password with AES
+    const passwordBuffer = Buffer.from(password, 'utf8');
+    const maxRSAEncryptSize = 245; // RSA-OAEP with 2048-bit key can encrypt up to 245 bytes
 
-    // Combine: salt (16 bytes) + IV (12 bytes) + encrypted data + auth tag (16 bytes)
-    const combined = Buffer.concat([salt, iv, encrypted, authTag]);
-
-    // Convert to base64
-    const encryptedPassword = combined.toString('base64');
+    let encryptedPassword;
+    
+    if (passwordBuffer.length <= maxRSAEncryptSize) {
+      // Direct RSA encryption (for short passwords)
+      try {
+        const publicKey = crypto.createPublicKey(publicKeyPem);
+        encryptedPassword = crypto.publicEncrypt(
+          {
+            key: publicKey,
+            padding: crypto.constants.RSA_PKCS1_OAEP_PADDING,
+            oaepHash: 'sha256',
+          },
+          passwordBuffer
+        ).toString('base64');
+      } catch (rsaError) {
+        console.error('RSA encryption error:', rsaError);
+        return res.status(500).json({ 
+          error: `Failed to encrypt password: ${rsaError.message}` 
+        });
+      }
+    } else {
+      // Hybrid encryption for longer passwords
+      // 1. Generate random AES key
+      const aesKey = crypto.randomBytes(32);
+      const iv = crypto.randomBytes(12);
+      
+      // 2. Encrypt password with AES-GCM
+      const cipher = crypto.createCipheriv('aes-256-gcm', aesKey, iv);
+      const encrypted = Buffer.concat([
+        cipher.update(passwordBuffer),
+        cipher.final()
+      ]);
+      const authTag = cipher.getAuthTag();
+      
+      // 3. Encrypt AES key with RSA public key
+      const publicKey = crypto.createPublicKey(publicKeyPem);
+      const encryptedAesKey = crypto.publicEncrypt(
+        {
+          key: publicKey,
+          padding: crypto.constants.RSA_PKCS1_OAEP_PADDING,
+          oaepHash: 'sha256',
+        },
+        aesKey
+      );
+      
+      // 4. Combine: [encrypted AES key][IV][encrypted data][auth tag]
+      const combined = Buffer.concat([
+        Buffer.from([encryptedAesKey.length]), // 1 byte: length of encrypted AES key
+        encryptedAesKey,
+        iv,
+        encrypted,
+        authTag
+      ]);
+      
+      encryptedPassword = combined.toString('base64');
+    }
 
     return res.status(200).json({
       encryptedPassword,
