@@ -47,7 +47,54 @@
  *       401:
  *         description: Unauthorized
  */
+import { authenticateRequest } from '@modules-logic/middleware/auth';
+import { createPost } from '@modules-logic/services/posts';
+
 export default async function handler(req, res) {
-  // TODO: Implement create handler
-  res.status(200).json({ message: 'create endpoint' });
+  if (req.method !== 'POST') {
+    res.setHeader('Allow', ['POST']);
+    return res.status(405).json({ error: 'Method not allowed' });
+  }
+
+  try {
+    // Authenticate user
+    const user = await authenticateRequest(req);
+    if (!user || !user.id) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const { caption, image_url, target_accounts, scheduled_for } = req.body;
+
+    // Validate required fields
+    if (!caption || !image_url) {
+      return res.status(400).json({
+        error: 'Missing required fields: caption and image_url are required',
+      });
+    }
+
+    // Create post
+    const job = await createPost(user.id, {
+      caption,
+      image_url,
+      target_accounts,
+      scheduled_for,
+    });
+
+    return res.status(201).json({
+      message: 'Post created successfully',
+      job,
+    });
+  } catch (err) {
+    console.error('Create post error:', err);
+
+    if (err.message?.includes('Unauthorized') || err.message?.includes('token')) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    if (err.message?.includes('required') || err.message?.includes('Invalid') || err.message?.includes('No active accounts')) {
+      return res.status(400).json({ error: err.message });
+    }
+
+    return res.status(500).json({ error: err.message || 'Failed to create post' });
+  }
 }

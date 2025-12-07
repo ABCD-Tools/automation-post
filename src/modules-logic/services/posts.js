@@ -162,3 +162,98 @@ export async function deletePost(userId, postId) {
   return { success: true, postId };
 }
 
+/**
+ * Create a new post (job with job_type='post')
+ * @param {string} userId - Supabase auth user ID
+ * @param {Object} postData - Post data
+ * @param {string} postData.caption - Post caption (max 2200 characters)
+ * @param {string} postData.image_url - Cloudinary image URL
+ * @param {Array<string>} postData.target_accounts - Array of account IDs (optional, defaults to all active)
+ * @param {string} postData.scheduled_for - Optional scheduled time (ISO string)
+ * @returns {Promise<Object>} Created post (job) object
+ */
+export async function createPost(userId, postData) {
+  const { caption, image_url, target_accounts, scheduled_for } = postData;
+
+  // Validate required fields
+  if (!caption || !image_url) {
+    throw new Error('Caption and image_url are required');
+  }
+
+  // Validate caption length
+  if (caption.length > 2200) {
+    throw new Error('Caption must be 2200 characters or less');
+  }
+
+  // Validate image URL format
+  if (!image_url.startsWith('http://') && !image_url.startsWith('https://')) {
+    throw new Error('Invalid image URL format');
+  }
+
+  // Get target accounts - if not provided, get all active accounts for user
+  let accountIds = target_accounts;
+  if (!accountIds || accountIds.length === 0) {
+    const { data: accounts, error: accountsError } = await supabase
+      .from('accounts')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('status', 'active');
+
+    if (accountsError) {
+      throw new Error(`Failed to fetch accounts: ${accountsError.message}`);
+    }
+
+    accountIds = accounts?.map((acc) => acc.id) || [];
+    
+    if (accountIds.length === 0) {
+      throw new Error('No active accounts found. Please add an account first.');
+    }
+  } else {
+    // Verify all target accounts belong to user
+    const { data: accounts, error: accountsError } = await supabase
+      .from('accounts')
+      .select('id')
+      .eq('user_id', userId)
+      .in('id', accountIds);
+
+    if (accountsError) {
+      throw new Error(`Failed to verify accounts: ${accountsError.message}`);
+    }
+
+    if (accounts.length !== accountIds.length) {
+      throw new Error('One or more target accounts not found or access denied');
+    }
+  }
+
+  // Build content object
+  const content = {
+    caption,
+    image_url,
+  };
+
+  // Determine status and scheduled_for
+  const status = scheduled_for && new Date(scheduled_for) > new Date() ? 'queued' : 'queued';
+  const scheduledFor = scheduled_for ? new Date(scheduled_for).toISOString() : null;
+
+  // Create job
+  const { data: job, error } = await supabase
+    .from('jobs')
+    .insert({
+      user_id: userId,
+      job_type: 'post',
+      status,
+      content,
+      target_accounts: accountIds,
+      scheduled_for: scheduledFor,
+      expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(), // 7 days default
+    })
+    .select()
+    .single();
+
+  if (error) {
+    throw new Error(`Failed to create post: ${error.message}`);
+  }
+
+  return job;
+}
+
