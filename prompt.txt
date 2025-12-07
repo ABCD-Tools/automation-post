@@ -1,224 +1,37 @@
-CRITICAL BUG: Cannot Copy Source Files on Vercel
+## Next Steps After Developer Zip Installation
 
-ERROR:
-ENOENT: no such file or directory, scandir '/vercel/path0/src/modules-agents'
+After successfully downloading and running the developer zip locally:
 
-ROOT CAUSE:
-Code is trying to read/copy from deployment directory (/vercel/path0/src/...)
-but the path resolution or copy operation is failing.
+### Current Status
+- ✅ Developer zip downloaded and extracted
+- ✅ Agent running locally (verified via logs)
+- ✅ API connectivity confirmed (ping test passes)
 
-The deployment directory IS readable, but something in the copy logic is wrong.
+### Next Todo Items
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-TASKS - FIX SOURCE FILE COPYING
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+1. **Add Installer Directory Feedback to Website**
+   - Create API endpoint to receive installer directory path from client
+   - Update client registration to send installer directory path
+   - Display installer directory in website dashboard/settings
+   - Show status: "Agent installed at: [directory path]"
+   - This allows users to proceed to next step (add accounts and posts)
 
-Task 1: Debug the exact failure point
-* [ ] Add detailed logging in src/modules-installer/builder.js or package.js
-* [ ] Around line "[1/5] Copying modules..."
-* [ ] Log the EXACT paths being used:
-```javascript  console.log('[DEBUG] __dirname:', __dirname);
-  console.log('[DEBUG] process.cwd():', process.cwd());
-  console.log('[DEBUG] Resolved source path:', sourcePath);
-  console.log('[DEBUG] Target path:', targetPath);
-  console.log('[DEBUG] Source exists?', fs.existsSync(sourcePath));
-  console.log('[DEBUG] Source is directory?', fs.statSync(sourcePath).isDirectory());
+2. **Enable Account Management**
+   - Once installer directory is confirmed, allow users to:
+     - Add social media accounts (Instagram, Facebook, Twitter)
+     - Verify account connectivity
+     - Store account credentials securely (encrypted)
 
-Task 2: Fix path resolution
-* [ ] The error shows: '/vercel/path0/src/modules-agents'
-* [ ] But on Vercel, code is compiled to /var/task/
-* [ ] Check if you're using relative paths incorrectly
-* [ ] Use absolute path from process.cwd():
-```javascript  // ❌ WRONG (might break after compilation)
-  const sourcePath = path.join(__dirname, '../src/modules-agents');  // ✅ CORRECT (works in production)
-  const sourcePath = path.join(process.cwd(), 'src', 'modules-agents');
+3. **Enable Post Creation**
+   - After accounts are added, enable post creation workflow:
+     - Upload images
+     - Write captions
+     - Select target accounts
+     - Schedule or post immediately
+     - Monitor job execution status
 
-Task 3: Check if path exists before copying
-* [ ] Add existence check:
-```javascript  const sourcePath = path.join(process.cwd(), 'src', 'modules-agents');  if (!fs.existsSync(sourcePath)) {
-    console.error('[ERROR] Source path does not exist:', sourcePath);
-    console.log('[DEBUG] Current working directory:', process.cwd());
-    console.log('[DEBUG] Directory contents:', fs.readdirSync(process.cwd()));
-    throw new Error(`Source directory not found: ${sourcePath}`);
-  }  console.log('[OK] Source path exists:', sourcePath);
+### Implementation Notes
+- The installer directory should be sent during client registration (already has `installPath` in registerClient)
+- Need to add UI component to display installer directory in settings/agents page
+- Need to add validation to ensure agent is properly installed before allowing account/post operations
 
-Task 4: List actual Vercel deployment structure
-* [ ] On Vercel, after Next.js build, files are in different locations
-* [ ] Add diagnostic code:
-```javascript  console.log('[DEBUG] Listing deployment structure:');
-  console.log('process.cwd():', process.cwd());
-  console.log('Contents:', fs.readdirSync(process.cwd()));  // Check if src/ exists
-  const srcPath = path.join(process.cwd(), 'src');
-  if (fs.existsSync(srcPath)) {
-    console.log('src/ contents:', fs.readdirSync(srcPath));
-  } else {
-    console.log('src/ does NOT exist at:', srcPath);    // Try to find where modules actually are
-    const possiblePaths = [
-      path.join(process.cwd(), '.next', 'server'),
-      path.join(process.cwd(), 'dist'),
-      '/var/task',
-      '/var/task/src'
-    ];    possiblePaths.forEach(p => {
-      if (fs.existsSync(p)) {
-        console.log(`Found: ${p}`, fs.readdirSync(p).slice(0, 10));
-      }
-    });
-  }
-
-Task 5: Bundle source files differently
-* [ ] PROBLEM: Source files might not be deployed to Vercel
-* [ ] Next.js only deploys what's needed for runtime
-* [ ] src/ directory might not be included in deployment
-* [ ] SOLUTION: Pre-bundle the agent files into public/ or .next/
-
-* [ ] Option A: Copy to public/ during build
-      Create: scripts/prepare-agent-files.js
-```javascript  const fs = require('fs-extra');
-  const path = require('path');  const sourceDir = path.join(__dirname, '../src/modules-client');
-  const targetDir = path.join(__dirname, '../public/agent-files');  // Copy all agent files to public/
-  fs.copySync(sourceDir, targetDir);
-  console.log('✅ Agent files copied to public/');
-      
-      Add to package.json:
-```json  "scripts": {
-    "build": "node scripts/prepare-agent-files.js && next build"
-  }
-      
-      Then in installer builder:
-```javascript  const sourcePath = path.join(process.cwd(), 'public', 'agent-files');
-
-* [ ] Option B: Embed files in the compiled function
-      Use Next.js webpack config to include raw files:
-```javascript  // next.config.js
-  module.exports = {
-    webpack: (config) => {
-      config.module.rules.push({
-        test: /\.(js|mjs)$/,
-        include: path.join(__dirname, 'src/modules-client'),
-        type: 'asset/source'
-      });
-      return config;
-    }
-  };
-
-Task 6: Alternative - Fetch from GitHub/CDN
-* [ ] Instead of copying local files, fetch from remote source
-* [ ] Store agent files in GitHub or CDN
-* [ ] Download during installer generation:
-```javascript  const agentFilesUrl = 'https://github.com/yourrepo/agent-files/archive/main.zip';
-  const response = await fetch(agentFilesUrl);
-  const zipBuffer = await response.arrayBuffer();
-  // Extract and use files
-
-Task 7: Simplest solution - Pre-build agent bundle
-* [ ] Don't copy source files during request
-* [ ] Pre-build agent ZIP once during deployment
-* [ ] Store in public/ directory
-* [ ] Just customize .env during request:
-      
-      Build script (runs during deployment):
-```javascript  // scripts/build-agent-template.js
-  const archiver = require('archiver');
-  const fs = require('fs');
-  const path = require('path');  const output = fs.createWriteStream('public/agent-template.zip');
-  const archive = archiver('zip', { zlib: { level: 9 } });  archive.pipe(output);
-  archive.directory('src/modules-client/', 'agent');
-  archive.directory('src/modules-agents/utils/', 'agent/utils');
-  archive.finalize();
-      
-      Runtime (during download request):
-```javascript  // Just copy template and add custom .env
-  const templatePath = path.join(process.cwd(), 'public', 'agent-template.zip');
-  const customZipPath = path.join('/tmp', `agent-${userId}.zip`);  // Copy template
-  fs.copyFileSync(templatePath, customZipPath);  // Add custom .env to existing ZIP
-  const zip = new AdmZip(customZipPath);
-  zip.addFile('.env', Buffer.from(envContent));
-  zip.writeZip(customZipPath);  // Upload to Supabase
-  const downloadUrl = await uploadToSupabase(customZipPath);
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-RECOMMENDED SOLUTION (FASTEST TO IMPLEMENT)
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-Use Task 7 - Pre-build agent template approach:
-
-STEP 1: Create build script
-* [ ] Create: scripts/build-agent-template.js
-* [ ] This runs ONCE during deployment (not per request)
-* [ ] Bundles all agent files into public/agent-template.zip
-* [ ] Add to package.json build script
-
-STEP 2: Modify installer builder
-* [ ] Instead of copying source files:
-      - Copy public/agent-template.zip to /tmp
-      - Add custom .env to the ZIP
-      - Upload to Supabase
-* [ ] This is MUCH faster (no file copying, just .env injection)
-
-STEP 3: Update package.json
-```json{
-"scripts": {
-"prebuild": "node scripts/build-agent-template.js",
-"build": "next build",
-"dev": "next dev"
-}
-}
-
-This solves:
-✅ No source file copying during request (fast!)
-✅ Works on Vercel (reads from public/, writes to /tmp)
-✅ No path resolution issues
-✅ Reduces function execution time (avoids timeout)
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-IMPLEMENTATION ORDER
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-DO THESE IMMEDIATELY:
-1. Task 4 - Add diagnostic logging to see actual paths
-2. Deploy and check logs to see where files actually are
-
-THEN CHOOSE ONE:
-Option A (Recommended - Task 7):
-  - Create build-agent-template.js script
-  - Pre-build agent ZIP during deployment
-  - Just inject .env during request
-  
-Option B (Task 5 Option A):
-  - Copy agent files to public/ during build
-  - Read from public/ during request
-
-Option C (Task 2 + Task 3):
-  - Fix path resolution
-  - Add existence checks
-  - Try to make current approach work
-
-RECOMMENDED: Option A (Task 7) - cleanest and fastest!
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-EXPECTED RESULT
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-After implementing Task 7 (pre-build approach):
-
-Build time (deployment):
-[prebuild] Building agent template...
-[prebuild] Copying modules-client files...
-[prebuild] Copying modules-agents/utils...
-[prebuild] Creating agent-template.zip...
-[prebuild] ✅ Agent template created: public/agent-template.zip (14.2 MB)
-
-Runtime (user request):
-[Builder] Copying agent template from public/
-[Builder] Template copied to: /tmp/agent-1733540123.zip
-[Builder] Injecting custom .env...
-[Builder] ✅ Agent ready for upload
-[Upload] Uploading to Supabase...
-[Upload] ✅ Upload complete
-[Cleanup] Removed /tmp/agent-1733540123.zip
-
-User receives download URL in < 5 seconds!
-No more ENOENT errors!
-No source file path issues!
-
-START WITH TASK 4 TO DEBUG, THEN IMPLEMENT TASK 7!

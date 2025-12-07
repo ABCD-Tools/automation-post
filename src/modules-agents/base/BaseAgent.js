@@ -11,7 +11,12 @@ import { existsSync } from 'fs';
 import axios from 'axios';
 
 /**
- * Base Agent - Abstract base class for all platform agents
+ * Base Agent - Platform-agnostic workflow executor
+ * 
+ * This is a unified agent class that executes workflows. Platform-specific
+ * logic is handled by workflows stored in the database, not by separate
+ * agent classes. Workflows contain platform-specific micro-actions that
+ * are executed sequentially.
  * 
  * Provides:
  * - Browser initialization with stealth
@@ -19,6 +24,10 @@ import axios from 'axios';
  * - Session management (cookies, storage)
  * - Error handling and retry logic
  * - Integration with WorkflowExecutor and VisualExecutor
+ * - Workflow loading from database, API, or file system
+ * 
+ * Note: Platform-specific agent classes (InstagramAgent, TwitterAgent, etc.)
+ * have been removed. All platform logic is now handled by workflows.
  */
 export class BaseAgent {
   constructor(options = {}) {
@@ -43,7 +52,6 @@ export class BaseAgent {
     this.visualExecutor = null;
     this.isInitialized = false;
     this.sessionData = null;
-    this.platform = options.platform || 'all';
     this.workflowStorage = new WorkflowStorage(this.options.workflowDir);
     this.workflowCache = new Map(); // Cache loaded workflows
   }
@@ -144,11 +152,13 @@ export class BaseAgent {
   /**
    * Load workflow by type from database, API, or file system
    * @param {string} type - Workflow type (auth, post, like, etc.)
-   * @param {Object} options - Load options
+   * @param {Object} options - Load options (platform, etc.)
    * @returns {Promise<Object>} Workflow object with actions
    */
   async loadWorkflow(type, options = {}) {
-    const cacheKey = `${this.platform}_${type}`;
+    // Platform is now passed in options or comes from workflow itself
+    const platform = options.platform || 'all';
+    const cacheKey = `${platform}_${type}`;
     
     // Check cache first
     if (this.workflowCache.has(cacheKey)) {
@@ -169,7 +179,7 @@ export class BaseAgent {
           `${this.options.apiUrl}/admin/workflows/list`,
           {
             params: {
-              platform: this.platform,
+              platform: platform,
               type: type,
               page: 1,
               limit: 1,
@@ -193,7 +203,7 @@ export class BaseAgent {
     // Fallback to file system
     if (!workflow && (this.options.workflowSource === 'file' || !workflow)) {
       try {
-        const filename = `${this.platform}_${type}`;
+        const filename = `${platform}_${type}`;
         workflow = await this.workflowStorage.loadWorkflow(filename);
       } catch (error) {
         // Try alternative naming
@@ -207,7 +217,7 @@ export class BaseAgent {
     }
     
     if (!workflow || !workflow.actions) {
-      throw new Error(`Workflow not found: platform=${this.platform}, type=${type}`);
+      throw new Error(`Workflow not found: platform=${platform}, type=${type}`);
     }
     
     // Cache workflow
@@ -252,11 +262,13 @@ export class BaseAgent {
   /**
    * Run workflow by type (convenience method)
    * @param {string} type - Workflow type (auth, post, like, etc.)
-   * @param {Object} variables - Template variables
+   * @param {Object} variables - Template variables (can include platform)
    * @returns {Promise<Object>} Execution result
    */
   async runWorkflow(type, variables = {}) {
-    const workflow = await this.loadWorkflow(type);
+    // Extract platform from variables if provided, otherwise use 'all'
+    const platform = variables.platform || 'all';
+    const workflow = await this.loadWorkflow(type, { platform });
     return await this.executeWorkflow(workflow.actions, variables);
   }
   

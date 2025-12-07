@@ -7,6 +7,33 @@ import { config, getApiHeaders, validateConfig } from './config.js';
 import { logger } from './logger.js';
 
 /**
+ * Test API connectivity with ping endpoint
+ */
+export async function pingApi() {
+  try {
+    const response = await axios.get(
+      `${config.apiUrl}/ping`,
+      { headers: getApiHeaders() }
+    );
+    
+    if (response.data && response.data.status === 'ok') {
+      logger.info('API ping successful');
+      return true;
+    }
+    
+    logger.warn('API ping returned unexpected response:', response.data);
+    return false;
+  } catch (error) {
+    logger.error('Failed to ping API:', error.message);
+    if (error.response) {
+      logger.error('Response status:', error.response.status);
+      logger.error('Response data:', error.response.data);
+    }
+    return false;
+  }
+}
+
+/**
  * Poll for pending jobs from API
  */
 export async function pollPendingJobs() {

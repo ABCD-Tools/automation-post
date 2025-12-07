@@ -104,17 +104,16 @@ abcd-tools/
 │   │
 │   ├── modules-agents/             # Browser automation agents
 │   │   ├── base/
-│   │   │   └── BaseAgent.js       # Abstract agent class
-│   │   │
-│   │   ├── platforms/
-│   │   │   ├── InstagramAgent.js
-│   │   │   ├── FacebookAgent.js
-│   │   │   └── TwitterAgent.js
+│   │   │   └── BaseAgent.js       # Abstract agent class (platform-agnostic, uses workflows)
 │   │   │
 │   │   └── utils/
 │   │       ├── stealth.js         # Anti-detection
 │   │       ├── human-behavior.js  # Random delays, typing
-│   │       └── browser.js         # Browser finder utility
+│   │       └── browser.mjs        # Browser finder utility
+│   │
+│   │   Note: Platform-specific agents removed. All platform logic is handled
+│   │   by workflows stored in the database. BaseAgent executes workflows
+│   │   which contain platform-specific micro-actions.
 │   │
 │   ├── modules-client/             # Local client agent
 │   │   ├── agent.js               # Main agent entry point

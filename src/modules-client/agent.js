@@ -11,7 +11,7 @@
 
 import { config, validateConfig } from './config.js';
 import { logger } from './logger.js';
-import { pollPendingJobs, sendHeartbeat, updateJobStatus, registerClient } from './poller.js';
+import { pollPendingJobs, sendHeartbeat, updateJobStatus, registerClient, pingApi } from './poller.js';
 import { WorkflowExecutor } from './workflow-executor.js';
 import puppeteer from 'puppeteer-core';
 // Browser finder - will be available as browser.mjs in bundled package
@@ -315,13 +315,23 @@ async function main() {
     removeLockFile();
     process.exit(0);
   });
-  
+
   process.on('SIGTERM', () => {
     logger.info('\nReceived SIGTERM. Shutting down gracefully...');
     removeLockFile();
     process.exit(0);
   });
-  
+
+  // Test API connectivity before starting polling
+  logger.info('Testing API connectivity...');
+  const pingSuccess = await pingApi();
+  if (!pingSuccess) {
+    logger.error('API ping failed. Please check your API_URL and network connection.');
+    logger.error('Agent will not start without API connectivity.');
+    removeLockFile();
+    process.exit(1);
+  }
+
   // Start polling
   try {
     await startPolling();
