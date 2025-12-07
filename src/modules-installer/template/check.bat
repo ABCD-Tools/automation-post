@@ -7,29 +7,55 @@ setlocal enabledelayedexpansion
 
 REM Get the directory where this batch file is located
 set "SCRIPT_DIR=%~dp0"
-cd /d "%SCRIPT_DIR%"
+REM Remove trailing backslash
+if "%SCRIPT_DIR:~-1%"=="\" set "SCRIPT_DIR=%SCRIPT_DIR:~0,-1%"
 
-REM If check.bat is in script/ subdirectory, go up to agents/ root
-if "%SCRIPT_DIR:~-8%"=="\script\" (
-    set "AGENTS_DIR=%SCRIPT_DIR%.."
-    cd /d "%AGENTS_DIR%"
+REM Change to script directory first to establish working directory
+cd /d "%SCRIPT_DIR%" 2>nul
+if errorlevel 1 (
+    echo ERROR: Cannot access script directory: %SCRIPT_DIR%
+    pause
+    exit /b 1
+)
+
+REM Check if we're in script/ subdirectory (check.bat is in agents/script/)
+REM Look for agents/ root indicators: package.json, modules-client, or start_agent.bat
+if exist "..\package.json" (
+    REM We're in script/, go up to agents/ root
+    cd /d ".."
     set "AGENTS_DIR=%CD%"
-) else if exist "%SCRIPT_DIR%..\agents" (
-    REM We're outside agents/, go to agents/
-    set "AGENTS_DIR=%SCRIPT_DIR%..\agents"
-    cd /d "%AGENTS_DIR%"
+) else if exist "..\modules-client" (
+    REM We're in script/, go up to agents/ root
+    cd /d ".."
     set "AGENTS_DIR=%CD%"
-) else if "%SCRIPT_DIR:~-7%"=="\agents" (
+) else if exist "..\start_agent.bat" (
+    REM We're in script/, go up to agents/ root
+    cd /d ".."
+    set "AGENTS_DIR=%CD%"
+) else if exist "package.json" (
     REM We're already in agents/ root
-    set "AGENTS_DIR=%SCRIPT_DIR%"
-    cd /d "%AGENTS_DIR%"
+    set "AGENTS_DIR=%CD%"
+) else if exist "modules-client" (
+    REM We're already in agents/ root
+    set "AGENTS_DIR=%CD%"
+) else if exist "start_agent.bat" (
+    REM We're already in agents/ root
+    set "AGENTS_DIR=%CD%"
+) else if exist "..\agents\package.json" (
+    REM We're outside agents/, navigate to agents/
+    cd /d "..\agents"
+    set "AGENTS_DIR=%CD%"
+) else if exist "agents\package.json" (
+    REM agents/ is a subdirectory
+    cd /d "agents"
     set "AGENTS_DIR=%CD%"
 ) else (
-    REM Assume we're in agents/ root
-    set "AGENTS_DIR=%SCRIPT_DIR%"
-    cd /d "%AGENTS_DIR%"
+    REM Last resort: assume current directory is agents/ root
     set "AGENTS_DIR=%CD%"
 )
+
+REM Ensure we're in the agents directory
+cd /d "%AGENTS_DIR%"
 
 set "NODE_EXE=%AGENTS_DIR%\node.exe"
 set "PNPM_EXE=%AGENTS_DIR%\pnpm.exe"

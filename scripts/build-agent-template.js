@@ -25,6 +25,19 @@ async function buildAgentTemplate() {
   }
   
   const templatePath = path.join(publicDir, 'agent-template.zip');
+  
+  // Precheck: Delete existing agent-template.zip if it exists
+  if (fs.existsSync(templatePath)) {
+    console.log('[prebuild] Found existing agent-template.zip, deleting it...');
+    try {
+      fs.unlinkSync(templatePath);
+      console.log('[prebuild] ✓ Old agent-template.zip deleted');
+    } catch (error) {
+      console.warn('[prebuild] Warning: Could not delete old agent-template.zip:', error.message);
+      // Continue anyway - the new ZIP will overwrite it
+    }
+  }
+  
   const zip = new AdmZip();
   
   // Source directories
@@ -207,11 +220,17 @@ pause
   
   // Read batch files from template directory
   try {
-    if (fs.existsSync(path.join(templateDir, 'setup_agents.bat'))) {
-      const setupAgentsBat = fs.readFileSync(path.join(templateDir, 'setup_agents.bat'), 'utf-8');
-      const checkBat = fs.readFileSync(path.join(templateDir, 'check.bat'), 'utf-8');
-      const readmeTxt = fs.readFileSync(path.join(templateDir, 'README.txt'), 'utf-8');
-      const startAgentBat = fs.readFileSync(path.join(templateDir, 'start_agent.bat'), 'utf-8');
+    const setupAgentsPath = path.join(templateDir, 'setup_agents.bat');
+    const checkBatPath = path.join(templateDir, 'check.bat');
+    const startAgentBatPath = path.join(templateDir, 'start_agent.bat');
+    const readmeTxtPath = path.join(templateDir, 'README.txt');
+    
+    if (fs.existsSync(setupAgentsPath)) {
+      console.log('[prebuild] Reading batch files from template directory...');
+      const setupAgentsBat = fs.readFileSync(setupAgentsPath, 'utf-8');
+      const checkBat = fs.readFileSync(checkBatPath, 'utf-8');
+      const readmeTxt = fs.readFileSync(readmeTxtPath, 'utf-8');
+      const startAgentBat = fs.readFileSync(startAgentBatPath, 'utf-8');
       
       // Add to script/ directory
       zip.addFile('agents/script/setup_agents.bat', Buffer.from(setupAgentsBat, 'utf-8'));
@@ -219,12 +238,16 @@ pause
       zip.addFile('agents/README.txt', Buffer.from(readmeTxt, 'utf-8'));
       zip.addFile('agents/start_agent.bat', Buffer.from(startAgentBat, 'utf-8'));
       
-      console.log('[prebuild] Added batch files and README from template');
+      console.log('[prebuild] ✓ Added updated batch files and README from template');
+      console.log(`[prebuild]   - setup_agents.bat (${setupAgentsBat.length} bytes)`);
+      console.log(`[prebuild]   - check.bat (${checkBat.length} bytes)`);
+      console.log(`[prebuild]   - start_agent.bat (${startAgentBat.length} bytes)`);
     } else {
-      throw new Error('Template directory not found');
+      throw new Error(`Template directory not found or setup_agents.bat missing: ${setupAgentsPath}`);
     }
   } catch (error) {
-    console.warn('[prebuild] Warning: Could not read template files, using defaults:', error.message);
+    console.error('[prebuild] ❌ Error reading template files:', error.message);
+    console.warn('[prebuild] Warning: Falling back to default batch file content');
     // Fallback to old content
     zip.addFile('agents/script/setup_agents.bat', Buffer.from(setupBatContent, 'utf-8'));
   }
