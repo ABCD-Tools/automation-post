@@ -60,21 +60,32 @@ export async function pollPendingJobs() {
     
     logger.debug(`[HTTP] GET ${url} → ${response.status} ${response.statusText} (${duration}ms)`);
     
-    if (response.data && Array.isArray(response.data)) {
-      if (response.data.length > 0) {
-        logger.info(`📋 Found ${response.data.length} pending job(s) - ready to process`);
-        // Log job details
-        response.data.forEach((job, idx) => {
-          logger.info(`   Job ${idx + 1}: ${job.id} (${job.job_type || 'unknown'}) - ${job.status || 'queued'}`);
-        });
-      } else {
-        logger.debug(`   No pending jobs available`);
+    // Handle both response formats:
+    // 1. New format: array directly [job1, job2, ...]
+    // 2. Old format: { jobs: [job1, job2, ...], count: N }
+    let jobs = [];
+    if (response.data) {
+      if (Array.isArray(response.data)) {
+        // New format: array directly
+        jobs = response.data;
+      } else if (response.data.jobs && Array.isArray(response.data.jobs)) {
+        // Old format: object with jobs property
+        jobs = response.data.jobs;
+        logger.debug(`   Received old response format, extracted ${jobs.length} job(s) from jobs property`);
       }
-      return response.data;
     }
     
-    logger.warn(`   Unexpected response format:`, response.data);
-    return [];
+    if (jobs.length > 0) {
+      logger.info(`📋 Found ${jobs.length} pending job(s) - ready to process`);
+      // Log job details
+      jobs.forEach((job, idx) => {
+        logger.info(`   Job ${idx + 1}: ${job.id} (${job.job_type || 'unknown'}) - ${job.status || 'queued'}`);
+      });
+    } else {
+      logger.debug(`   No pending jobs available`);
+    }
+    
+    return jobs;
   } catch (error) {
     const duration = Date.now() - startTime;
     if (error.response) {
