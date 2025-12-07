@@ -80,3 +80,4 @@ recordings/
 *.temp
 .temp/
 .tmp/
+public/agent-template.zip

@@ -43,11 +43,51 @@ export default async function handler(req, res) {
       return res.status(404).json({ error: 'Client not found or access denied' });
     }
 
-    // If we have the encrypted key stored, return it
+    // If we have the encrypted key stored, check format and return it
     if (client.encrypted_encryption_key) {
-      return res.status(200).json({
-        encryptedKey: client.encrypted_encryption_key,
-      });
+      const storedKey = client.encrypted_encryption_key;
+      
+      // Check if it's in the old format (just hex) or new format (iv:encrypted)
+      if (storedKey.includes(':')) {
+        // New format - return as is
+        return res.status(200).json({
+          encryptedKey: storedKey,
+        });
+      } else {
+        // Old format (just hex) - need to re-encrypt it properly
+        // This happens when key was stored during registration before proper encryption
+        console.log('[DEBUG] Detected old key format, re-encrypting...');
+        
+        const authToken = req.headers.authorization?.replace('Bearer ', '') || '';
+        if (!authToken) {
+          return res.status(401).json({ error: 'Auth token required' });
+        }
+
+        // Derive encryption key from auth token
+        const sessionKey = crypto
+          .createHash('sha256')
+          .update(authToken + user.id)
+          .digest('hex');
+
+        // Encrypt the key with session key
+        const iv = crypto.randomBytes(16);
+        const cipher = crypto.createCipheriv('aes-256-cbc', Buffer.from(sessionKey, 'hex').slice(0, 32), iv);
+        let encrypted = cipher.update(storedKey, 'utf8', 'hex');
+        encrypted += cipher.final('hex');
+
+        // Combine IV and encrypted data
+        const encryptedKey = iv.toString('hex') + ':' + encrypted;
+
+        // Update stored key with new format
+        await supabase
+          .from('clients')
+          .update({ encrypted_encryption_key: encryptedKey })
+          .eq('id', id);
+
+        return res.status(200).json({
+          encryptedKey: encryptedKey,
+        });
+      }
     }
 
     // If not stored, try to get it from installer_downloads

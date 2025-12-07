@@ -182,6 +182,23 @@ export async function submitExecutionReport(report) {
 }
 
 /**
+ * Check if client is already registered
+ */
+export async function checkClientRegistration() {
+  // Try to ping the API - if it works, client is registered
+  const pingResult = await pingApi();
+  if (pingResult) {
+    logger.info('Client is already registered and connected');
+    return true;
+  }
+  
+  // If ping fails, check if it's an auth error (client exists but wrong token)
+  // or network error (client might not exist)
+  logger.debug('Client registration status unknown - ping failed');
+  return false;
+}
+
+/**
  * Register client on first run
  */
 export async function registerClient() {

@@ -43,13 +43,27 @@ async function buildAgentTemplate() {
     throw new Error(`modules-agents directory not found: ${modulesAgentsDir}`);
   }
   
+  // Create agents/ root structure
+  // Structure: agents/
+  //   - logs/ (empty directory)
+  //   - modules-agents/
+  //   - modules-client/
+  //   - script/ (batch files except start_agent.bat)
+  //   - .env
+  //   - package.json
+  //   - start_agent.bat
+  
   // Add modules-client directory
   console.log('[prebuild] Adding modules-client files...');
-  zip.addLocalFolder(modulesClientDir, 'modules-client');
+  zip.addLocalFolder(modulesClientDir, 'agents/modules-client');
   
   // Add modules-agents directory
   console.log('[prebuild] Adding modules-agents files...');
-  zip.addLocalFolder(modulesAgentsDir, 'modules-agents');
+  zip.addLocalFolder(modulesAgentsDir, 'agents/modules-agents');
+  
+  // Create empty logs directory
+  console.log('[prebuild] Creating logs directory...');
+  zip.addFile('agents/logs/.gitkeep', Buffer.from('', 'utf-8'));
   
   // Create a placeholder package.json (will be replaced with actual one during build)
   const packageJson = {
@@ -66,14 +80,14 @@ async function buildAgentTemplate() {
       'jimp': '^0.22.10',
     },
   };
-  zip.addFile('package.json', Buffer.from(JSON.stringify(packageJson, null, 2), 'utf-8'));
+  zip.addFile('agents/package.json', Buffer.from(JSON.stringify(packageJson, null, 2), 'utf-8'));
   
   // Create placeholder .env (will be replaced with custom one during build)
   const envPlaceholder = `# ABCD Tools Client Configuration
 # This file will be replaced with custom configuration during build
 # DO NOT share this file with anyone!
 `;
-  zip.addFile('.env', Buffer.from(envPlaceholder, 'utf-8'));
+  zip.addFile('agents/.env', Buffer.from(envPlaceholder, 'utf-8'));
   
   // Create placeholder batch files
   const setupBatContent = `@echo off
@@ -188,7 +202,32 @@ echo   2. Run start_agent.bat to start the agent
 echo.
 pause
 `;
-  zip.addFile('setup.bat', Buffer.from(setupBatContent, 'utf-8'));
+  // Add batch files to script/ directory (except start_agent.bat)
+  const templateDir = path.join(projectRoot, 'src', 'modules-installer', 'template');
+  
+  // Read batch files from template directory
+  try {
+    if (fs.existsSync(path.join(templateDir, 'setup_agents.bat'))) {
+      const setupAgentsBat = fs.readFileSync(path.join(templateDir, 'setup_agents.bat'), 'utf-8');
+      const checkBat = fs.readFileSync(path.join(templateDir, 'check.bat'), 'utf-8');
+      const readmeTxt = fs.readFileSync(path.join(templateDir, 'README.txt'), 'utf-8');
+      const startAgentBat = fs.readFileSync(path.join(templateDir, 'start_agent.bat'), 'utf-8');
+      
+      // Add to script/ directory
+      zip.addFile('agents/script/setup_agents.bat', Buffer.from(setupAgentsBat, 'utf-8'));
+      zip.addFile('agents/script/check.bat', Buffer.from(checkBat, 'utf-8'));
+      zip.addFile('agents/README.txt', Buffer.from(readmeTxt, 'utf-8'));
+      zip.addFile('agents/start_agent.bat', Buffer.from(startAgentBat, 'utf-8'));
+      
+      console.log('[prebuild] Added batch files and README from template');
+    } else {
+      throw new Error('Template directory not found');
+    }
+  } catch (error) {
+    console.warn('[prebuild] Warning: Could not read template files, using defaults:', error.message);
+    // Fallback to old content
+    zip.addFile('agents/script/setup_agents.bat', Buffer.from(setupBatContent, 'utf-8'));
+  }
   
   const downloadDepsBatContent = `@echo off
 REM ABCD Tools - Download Dependencies
@@ -264,8 +303,10 @@ echo ========================================
 echo.
 pause
 `;
-  zip.addFile('download_deps.bat', Buffer.from(downloadDepsBatContent, 'utf-8'));
+  // Note: download_deps is now part of setup_agents.bat, but keep for backward compatibility
+  zip.addFile('agents/script/download_deps.bat', Buffer.from(downloadDepsBatContent, 'utf-8'));
   
+  // start_agent.bat is already added from template above, but keep old content as fallback
   const startAgentBatContent = `@echo off
 REM ABCD Tools - Start Agent
 REM Starts the agent using the downloaded Node.js
@@ -328,10 +369,11 @@ if errorlevel 1 (
     pause
 )
 `;
-  zip.addFile('start_agent.bat', Buffer.from(startAgentBatContent, 'utf-8'));
+  // start_agent.bat is already added from template, but keep old as fallback if template read failed
+  // (This will be overwritten if template read succeeded)
+  zip.addFile('agents/start_agent.bat', Buffer.from(startAgentBatContent, 'utf-8'));
   
-  // Add empty error.log
-  zip.addFile('error.log', Buffer.from('', 'utf-8'));
+  // Note: error.log removed per requirements - logs go to logs/ directory instead
   
   // Write ZIP file
   zip.writeZip(templatePath);

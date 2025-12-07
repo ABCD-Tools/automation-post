@@ -11,7 +11,7 @@
 
 import { config, validateConfig } from './config.js';
 import { logger } from './logger.js';
-import { pollPendingJobs, sendHeartbeat, updateJobStatus, registerClient, pingApi } from './poller.js';
+import { pollPendingJobs, sendHeartbeat, updateJobStatus, registerClient, pingApi, checkClientRegistration } from './poller.js';
 import { WorkflowExecutor } from './workflow-executor.js';
 import puppeteer from 'puppeteer-core';
 // Browser finder - will be available as browser.mjs in bundled package
@@ -340,13 +340,16 @@ async function main() {
     process.exit(1);
   }
   
-  // Register client on first run (if download token exists)
+  // Check if client is already registered
   logger.info('Checking client registration status...');
   logger.debug(`Download token present: ${config.downloadToken ? 'Yes' : 'No'}`);
   logger.debug(`Client ID present: ${config.clientId ? 'Yes' : 'No'}`);
   logger.debug(`API URL: ${config.apiUrl}`);
   
-  if (config.downloadToken) {
+  // First, try to ping API to check if already registered
+  const isRegistered = await checkClientRegistration();
+  
+  if (!isRegistered && config.downloadToken) {
     logger.info('Download token found - attempting client registration...');
     const registration = await registerClient();
     if (!registration) {
@@ -354,11 +357,13 @@ async function main() {
     } else {
       logger.info('Client registration completed successfully');
     }
-  } else if (!config.clientId) {
+  } else if (!isRegistered && !config.clientId) {
     logger.error('CLIENT_ID is required. Please reinstall the agent.');
     logger.error('No download token found and no CLIENT_ID configured.');
     removeLockFile();
     process.exit(1);
+  } else if (isRegistered) {
+    logger.info('Client is already registered. Skipping registration.');
   } else {
     logger.info('No download token found, but CLIENT_ID exists - skipping registration');
     logger.info('Client should already be registered. Continuing with existing client ID...');
